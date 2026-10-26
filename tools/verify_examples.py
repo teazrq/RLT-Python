@@ -98,6 +98,9 @@ def main():
             continue
         total_blocks += len(blocks)
         env = dict(os.environ, MPLBACKEND="Agg")
+        # The runner lives under build/. Test this checkout, even if an older
+        # distribution is installed in the shared Python library.
+        env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
         r = subprocess.run([sys.executable, runner, path, figdir],
                            capture_output=True, text=True, env=env, cwd=ROOT)
         ok = r.returncode == 0

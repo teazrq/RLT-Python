@@ -1,12 +1,14 @@
 # RLT_cla
 
-RLT classification forest — sklearn-compatible estimator porting the RLT R
+RLT classification forest, a sklearn-compatible estimator porting the RLT R
 package's `RLT(model = "classification")`.
 
-`RLT_cla` grows a random forest of classification trees. Labels may be
-integers, strings, or any one-dimensional array of distinct values;
-`classes_` records the sorted unique labels and `predict` returns the
-original label type.
+`RLT_cla` grows a random forest of classification trees. Ordinary integer
+or string label arrays use sorted observed classes. A pandas categorical
+response retains its declared levels and order, including unused levels
+and explicitly categorical numeric labels such as 0.25 and 0.75.
+`classes_` determines probability-column order and tie breaking; `predict`
+returns labels in their original type.
 
 ```python
 import numpy as np
@@ -25,7 +27,7 @@ prob = model.predict_proba(X)  # (n, n_classes)
 
 ```python
 RLT_cla(
-    n_estimators=500,
+    n_estimators=None,
     mtry=None,
     min_samples_leaf=5,
     nsplit=0,
@@ -56,12 +58,12 @@ RLT_cla(
 
 ### Parameters
 
-All parameters match [`RLT_reg`](rlt_reg.md) — see that page for the full
-table — with one classification-specific difference:
+See [`RLT_reg`](rlt_reg.md) for the shared parameters. The loading method
+has classification-specific choices:
 
 | Parameter | Type / values | Default | Description |
 |---|---|---|---|
-| `linear_comb_method` | "default", "lda", "naive", "random", "logistic" or int code 1–4 | "default" | How combination loadings are computed ("lda" = code 1 is the classification default). Unrecognized names or codes emit a `UserWarning` and reset to code 1 (`lda`). |
+| `linear_comb_method` | "default", "lda", "naive", "random", "logistic" or code 1 to 4 | "default" | How combination loadings are computed ("lda" = code 1 is the default). Integral doubles are accepted. Unknown names/out-of-range codes warn and reset to `lda`; fractional and nonfinite codes are rejected. |
 | `alpha` | float | 0 | Clamped to `[0, 0.5]` at fit, like R. |
 | `categorical_features` | bool mask / int indices / None | None | See [`RLT_reg`](rlt_reg.md); same behavior for all three estimators. |
 
@@ -69,13 +71,17 @@ table — with one classification-specific difference:
 
 | Method | Returns | Description |
 |---|---|---|
-| `fit(X, y, sample_weight=None, var_prob=None)` | `self` | Grow the forest. |
+| `fit(X, y, sample_weight=None, var_prob=None, *, resample_preset=None)` | `self` | Grow the forest, optionally with signed sampling counts. |
 | `predict(X)` | labels | Predicted class labels (original label type). |
 | `predict_proba(X)` | `(n, n_classes)` ndarray | Class-membership probabilities. |
 | `predict_log_proba(X)` | `(n, n_classes)` ndarray | Log-probabilities. |
-| `predict_var(X, var_mode=None, ...)` | `(prob, variance)` | Class probabilities (same values as `predict_proba`) plus their `(n, n_classes)` variance; mirrors R's `predict(fit, var.est=TRUE)` for classification. Requires `var_mode != "none"` at fit; negative variance estimates are set to NaN. |
+| `predict_details(X, *, var_est=False, var_mode=None, keep_all=False)` | dict | Decoded labels, class order, probabilities, and optional variance and per-tree probabilities. |
+| `predict_all_trees(X)` | `(n, trees, classes)` ndarray | Per-tree probabilities in `classes_` order. |
+| `oob_details()` | dict | Labeled OOB predictions with counts and availability mask. |
+| `tree_summary(tree=0)` / `print_tree(tree=0)` | dict | Readable splits and terminal class probabilities. |
+| `predict_var(X, var_mode=None, ...)` | `(prob, variance)` | Class probabilities plus their `(n, n_classes)` variance. Requires a fitted variance mode or an explicit compatible prediction-time mode; negative estimates become NaN. |
 | `importance_table()` | `ImportanceTable` | Variable-importance summary (Variable / VI, plus SD / Z / Sig when fitted with `importance != "none"` and `var_mode="matched"`); same as `rlt.importance(model)`. |
-| `forest_kernel(X1, X2=None, vs_train=False)` | integer ndarray | Forest similarity kernel. |
+| `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Forest similarity kernel. |
 | `get_one_tree(tree_id)` | dict of ndarrays | Raw arrays of tree `tree_id` (0-indexed). |
 | `score(X, y)` | float | Mean accuracy (sklearn convention). |
 
@@ -83,14 +89,15 @@ table — with one classification-specific difference:
 
 | Attribute | Shape | Description |
 |---|---|---|
-| `classes_` | `(n_classes,)` | Sorted unique labels seen at fit time. |
+| `classes_` | `(n_classes,)` | Declared pandas categorical levels, including unused levels, or sorted observed labels for ordinary arrays. |
 | `forest_` | dict | The full fitted forest. |
 | `oob_class_` | `(n,)` | Out-of-bag predicted classes (integer codes). |
 | `oob_prob_` | `(n, n_classes)` | Out-of-bag class probabilities. |
+| `oob_counts_` | `(n,)` | Number of eligible OOB predictions per row; use `oob_details()` to mask unavailable rows. |
 | `oob_error_` | float | Out-of-bag misclassification rate. |
 | `feature_importances_` | `(p,)` | Variable importance (when `importance != "none"`). |
 | `var_vi_` | `(p,)` | Per-variable variance of the VI estimates (when `importance != "none"` and `var_mode="matched"`). |
-| `obstrack_` | `(n, n_estimators)` | Inbag-count matrix (when tracked). |
+| `obstrack_` | `(n, trees)` | Signed sampling-count matrix, with `trees = params_.ntrees` (when tracked). |
 | `n_features_in_` | int | Number of predictors. |
 
 ## Examples

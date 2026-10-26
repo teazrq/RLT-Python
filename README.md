@@ -12,23 +12,24 @@ parameter, and pipeline interfaces.
 
 The shared tree algorithms come from RLT source version 6.1.1, with
 R/Rcpp interfaces replaced by pybind11. Python has its own estimator and
-array APIs. The optional smoothed confidence-band method uses a separate
-spline approximation and is not numerically identical to R's `mgcv` smoother.
+array APIs. Smoothed confidence bands use a narrow Python implementation of
+R's `mgcv` 1.9-4 tensor smoother, with no R process needed during prediction.
+The [comparison guide](https://teazrq.github.io/RLT-Python/reference/r-parity/)
+describes source pinning, tested numerical agreement, and random-stream limits.
 
 ## Installation
+
+The 0.3.0 alignment updates documented here are available from the GitHub
+source. This change does not publish a new PyPI release. To use these APIs,
+build the current source with shared Python dependencies:
 
 ```bash
 # system deps: armadillo, lapack, blas, openmp (e.g. apt install
 # libarmadillo-dev liblapack-dev libopenblas-dev)
-pip install rlt-forests
-```
-
-From source:
-
-```bash
+python -m pip install setuptools wheel pybind11
 git clone https://github.com/teazrq/RLT-Python
 cd RLT-Python
-pip install .
+python -m pip install --no-build-isolation .
 ```
 
 ## Quickstart
@@ -147,7 +148,7 @@ in their original order. Ordinary counts are not normalized prediction weights.
 
 | Python (sklearn-style) | R (RLT) | Default | Notes |
 |---|---|---|---|
-| `n_estimators` | `ntrees` | 500 | R defaults to 100 under reinforcement; set explicitly for comparisons. |
+| `n_estimators` | `ntrees` | None | 100 under reinforcement, 500 otherwise, matching R. |
 | `mtry` | `mtry` | max(1, p//2) | |
 | `min_samples_leaf` | `nmin` | 5 | |
 | `nsplit` | `nsplit` | 0 | random cut points; 0 = all (best split) |
@@ -162,12 +163,18 @@ in their original order. Ordinary counts are not normalized prediction weights.
 | `split_rule` | `split.rule` | model-specific | surv: logrank/suplogrank/coxgrad |
 | `embed_*` | `param.control$embed.*` | see R docs | embedded forest controls |
 | `n_jobs` | `ncores` | -1 | OpenMP threads |
-| `random_state` | `seed` | None | Integer forest seed, or a NumPy RandomState. |
+| `random_state` | `seed` | None | Integer forest seed, NumPy RandomState/Generator, or NumPy global RNG when omitted. |
 
 For a fixed dataset, integer `random_state` supplies the C++ forest seed,
 corresponding to R's `RLT(seed=...)`. Data generation uses a separate RNG.
 Reproducibility also depends on the implementation and numerical toolchain;
 cross-platform bitwise identity is not promised.
+
+Use [`predict_details`, `oob_details`, and model persistence](https://teazrq.github.io/RLT-Python/articles/model-workflows/)
+to retain labels, uncertainty, per-tree predictions, and sampling metadata.
+All three estimators accept signed `resample_preset` counts at fit time and
+support optional pandas category dictionaries. See [changes](CHANGELOG.md)
+for revised defaults and validation rules.
 
 ## Development
 

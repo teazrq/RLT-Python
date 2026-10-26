@@ -318,7 +318,7 @@ tree.keys()
 ```
 
 ```
-dict_keys(['SplitVar', 'SplitValue', 'LeftNode', 'RightNode', 'NodeWeight'])
+dict_keys(['SplitVar', 'SplitValue', 'LeftNode', 'RightNode', 'NodeWeight', 'NodeHaz'])
 ```
 
 ```python

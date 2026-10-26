@@ -186,7 +186,8 @@ def test_embedded_parameters_use_R_bounds_without_changing_constructor_values():
     assert (cp.linear_comb, cp.embed_ntrees, cp.embed_mtry, cp.embed_nmin, cp.embed_nsplit) == (3, 1, 3, 1, 0)
     assert (cp.embed_resample_prob, cp.embed_mute, cp.embed_protect, cp.embed_threshold) == (.99, 3, 3, 0)
     assert m.linear_comb == 10 and m.embed_ntrees == -2
-    assert RLT_reg().n_estimators == 500
+    assert RLT_reg().n_estimators is None
+    assert RLT_reg(random_state=1)._core_params(36, 3).ntrees == 500
 
 
 @pytest.mark.parametrize("value", [-1, 1.5, np.nan, np.inf, True, None, "2", [2]])

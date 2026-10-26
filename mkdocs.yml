@@ -64,6 +64,7 @@ nav:
       - Classification: tutorials/classification-tutorial.md
       - Survival: tutorials/survival-tutorial.md
   - Articles:
+      - Model Workflows: articles/model-workflows.md
       - Variable Importance: articles/variable-importance.md
       - Linear Combinations: articles/linear-combinations.md
       - Survival Confidence Bands: articles/confidence-interval.md
@@ -76,3 +77,4 @@ nav:
       - RLT_surv: reference/rlt_surv.md
       - get_surv_band: reference/get_surv_band.md
       - Comparing Python and R: reference/r-parity.md
+      - Functionality and Tests: reference/alignment-coverage.md

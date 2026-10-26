@@ -1,8 +1,8 @@
 # Single Tree
 
 This page shows how to inspect a single tree grown inside an `rlt` forest
-using `get_one_tree()` — the Python port of the RLT R package's single-tree
-article.
+using `get_one_tree()`. For a readable table, use `print_tree(0)` or retrieve
+its columns with `tree_summary(0)`.
 
 ## Data
 
@@ -81,7 +81,10 @@ tree.keys()
 dict_keys(['SplitVar', 'SplitValue', 'LeftNode', 'RightNode', 'NodeWeight', 'NodeAve'])
 ```
 
-The arrays are aligned by node index:
+The arrays are independent copies aligned by node index. Classification
+also returns `NodeProb`; survival returns the nested `NodeHaz` arrays;
+linear-combination trees include `SplitLoad`. Editing an extracted tree
+does not change predictions from the fitted model.
 
 | Array | Meaning |
 |-------|---------|

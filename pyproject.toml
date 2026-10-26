@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "rlt-forests"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reinforcement Learning Trees: random forests for regression, classification, and survival analysis (Python port of the RLT R package)"
 readme = "README.md"
 requires-python = ">=3.10"

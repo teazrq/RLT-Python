@@ -24,7 +24,7 @@ jobs:
       - name: Install package and docs deps
         run: |
           python -m pip install --upgrade pip setuptools wheel pybind11
-          python -m pip install --no-build-isolation -e . matplotlib mkdocs mkdocs-material
+          python -m pip install --no-build-isolation -e . matplotlib pandas mkdocs mkdocs-material
       - name: Verify every docs code example runs
         run: python tools/verify_examples.py
       - name: Build docs (strict)

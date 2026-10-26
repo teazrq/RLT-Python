@@ -1,22 +1,22 @@
 """Survival confidence bands around the exponential of predicted negative CHF.
 
-Requires a variance-enabled survival prediction. Two approaches:
+Accepts a saved prediction or a model and query covariates. Two approaches:
 
 - "naive": marginal SDs = sqrt(diag(Cov)); MC band with full covariance.
-- "smoothed": tensor-product penalized B-spline smoothing of the
+- "smoothed": R-compatible natural cubic tensor smoothing of the
   covariance surface, rank-k PSD truncation, positive-spectrum residual
-  correction, and eigenvalue-ratio weights. The C++ smoother uses actual
-  failure times and is an alternative to R's index-coordinate mgcv GAM;
-  the two methods do not have identical smoothing scales.
+  correction, and eigenvalue-ratio weights.
 """
 from __future__ import annotations
 
 from numbers import Real
+from collections.abc import Mapping
 import warnings
 
 import numpy as np
 
-from ._core import mc_band, rlt_tp_smooth
+from ._core import mc_band
+from ._surv_smoother import smooth_covariance
 
 
 def _nearest_psd(M):
@@ -56,9 +56,9 @@ def _integer_parameter(value, name, minimum=0):
     return int(value)
 
 
-def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
+def get_surv_band(model, X=None, i=0, alpha=0.05, approach="naive", nsim=5000,
                   k_rank=10, k_mode="fixed", k_prop=0.99, seed=0,
-                  band_grid_size=0):
+                  band_grid_size=0, var_mode=None):
     """Subject-specific simultaneous bands around ``exp(-CHF)``.
 
     The nominal simultaneous target is across the returned evaluation
@@ -67,13 +67,17 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
     curve that can differ from this reference curve; these bands do not
     directly estimate the variation of that mean product-limit estimator.
     Both approaches simulate from the raw CHF covariance. Smoothing changes
-    only the marginal standardizing scales, using the Python B-spline
-    alternative rather than R's GAM smoother.
+    only the marginal standardizing scales. The smoothed method follows
+    R's Gaussian natural cubic tensor GAM on time indices, with two
+    GCV-selected smoothing parameters. No R runtime is required.
 
     Parameters
     ----------
-    model : fitted RLT_surv with var_mode != "none"
-    X : test covariates
+    model : dict or fitted RLT_surv
+        A saved ``predict_details(..., var_est=True)`` result containing
+        ``CHF`` (n, T), ``Cov`` (n, T, T), and ``timepoints`` (T,), or a
+        fitted model. Covariance describes CHF, including for LC forests.
+    X : test covariates, required with a fitted model
     i : subject index (0 = all); 1-based like R when positive
     alpha : level or array of levels
     approach : {"naive", "smoothed"}
@@ -81,12 +85,18 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
     k_rank / k_mode / k_prop : rank truncation controls ("smoothed")
     seed : RNG seed for the MC band (deterministic given seed)
     band_grid_size : optional reduced grid (see predict_var)
+        Applies only to the model convenience call. A saved result uses
+        its exact stored grid.
+    var_mode : optional prediction-time covariance override
+        Passed to ``predict_details`` with a model. Saved covariance
+        already fixes its variance mode; no override is applied to it.
 
     Returns
     -------
     dict with ``lower``, ``upper`` (n, T) for scalar alpha or
     (n, n_alpha, T) for multiple levels, ``timepoints``, per-subject
-    ``diagnostics``, and final marginal scales ``marsd`` (n, T).
+    ``diagnostics``, final marginal scales ``marsd`` (n, T), ``alpha``,
+    and 1-based ``subjects``. Input prediction arrays are not modified.
     """
     if approach not in ("naive", "smoothed"):
         raise ValueError(f"approach {approach!r} not available")
@@ -106,18 +116,33 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
     elif approach == "smoothed":
         k_rank = _integer_parameter(k_rank, "k_rank")
 
-    out = model._predict_raw(X, var_est=True, band_grid_size=band_grid_size)
-    tp_grid, _ = model._grid_and_mapping(band_grid_size)
-    tp_grid = np.asarray(tp_grid, dtype=np.float64)
+    band_grid_size = _integer_parameter(band_grid_size, "band_grid_size")
+    if isinstance(model, Mapping):
+        if X is not None:
+            raise ValueError("X must be omitted when supplying a saved prediction")
+        if band_grid_size != 0 or var_mode is not None:
+            raise ValueError("a saved prediction uses its stored grid and covariance; select band_grid_size and var_mode during prediction")
+        out = model
+    elif callable(getattr(model, "predict_details", None)):
+        out = model.predict_details(X, var_est=True, var_mode=var_mode,
+                                    band_grid_size=band_grid_size)
+    else:
+        raise TypeError("supply a saved prediction dictionary containing CHF, Cov, and timepoints, or a fitted survival model")
     if "Cov" not in out:
-        raise ValueError("prediction covariance is unavailable; fit with var_mode")
+        raise ValueError("prediction covariance is unavailable; request var_est=True with a compatible var_mode")
+    if "CHF" not in out or "timepoints" not in out:
+        raise ValueError("prediction must contain CHF, Cov, and timepoints")
+    tp_grid = np.array(out["timepoints"], dtype=np.float64, copy=True)
     chf = np.asarray(out["CHF"], dtype=np.float64)
     cov = np.asarray(out["Cov"], dtype=np.float64)
     if (chf.ndim != 2 or cov.shape != (chf.shape[0], chf.shape[1], chf.shape[1])
-            or tp_grid.shape != (chf.shape[1],) or chf.shape[1] == 0):
+            or tp_grid.shape != (chf.shape[1],) or not all(chf.shape)):
         raise ValueError("CHF, covariance, and time grid dimensions must agree")
-    if not np.all(np.isfinite(chf)) or not np.all(np.isfinite(cov)):
-        raise ValueError("CHF and covariance must contain finite values")
+    if (not np.all(np.isfinite(chf)) or not np.all(np.isfinite(cov))
+            or not np.all(np.isfinite(tp_grid))):
+        raise ValueError("CHF, covariance, and timepoints must contain finite values")
+    if np.any(np.diff(tp_grid) <= 0):
+        raise ValueError("timepoints must be strictly increasing")
     N, nt = chf.shape
 
     if i == 0:
@@ -173,10 +198,7 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
                 k_used = min(k_rank, nt)
                 eig_info = None
 
-            # C++ tensor-product penalized B-spline smoother (GCV lambda)
-            Sigma_s = np.asarray(rlt_tp_smooth(
-                Sigma_raw, tp_grid.astype(np.float64).ravel(),
-                max(k_used, 4), -1.0))
+            Sigma_s, smoother_info = smooth_covariance(Sigma_raw, k_used)
             Sigma_psd = _nearest_psd(Sigma_s)
             Sigma_smoothK = _rank_k_psd(Sigma_psd, k_used) \
                 if k_used > 0 else np.zeros_like(Sigma_psd)
@@ -216,6 +238,8 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
         uppers.append(np.exp(-chf[idx] + k_crit))
         diags.append({"diag_sd": diag_info, "var_explained": ve_info,
                       "eig": eig_info})
+        if approach == "smoothed":
+            diags[-1]["smoother"] = smoother_info
         scales.append(marsd)
 
     return {
@@ -224,4 +248,6 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
         "timepoints": tp_grid,
         "marsd": np.asarray(scales),
         "diagnostics": diags,
+        "alpha": alphas.copy(),
+        "subjects": np.asarray(allid, dtype=int) + 1,
     }

@@ -93,6 +93,16 @@ def _flag(value, name):
     return bool(_number(value, name))
 
 
+def _primary_flag(value, name):
+    """Primary flags accept canonical booleans/0/1 without R's truncation."""
+    if isinstance(value, (bool, np.bool_)):
+        return bool(value)
+    number = _number(value, name)
+    if number not in (0, 1):
+        raise ValueError(f"{name} must be a boolean or 0/1")
+    return bool(number)
+
+
 def _clamp(value, name, minimum, maximum=None):
     number = max(minimum, _number(value, name))
     return min(maximum, number) if maximum is not None else number
@@ -111,18 +121,20 @@ def build_core_params(estimator, n: int, p: int, seed: int) -> CoreParams:
     if vm is None:
         vm = 0
 
-    replacement = _flag(estimator.resample_replace, "resample_replace")
+    replacement = _primary_flag(estimator.resample_replace, "resample_replace")
     resample_prob = (1.0 if replacement else 0.8) if estimator.resample_prob is None else _number(estimator.resample_prob, "resample_prob")
     if not 0 < resample_prob <= 1:
         raise ValueError("resample_prob must be in (0, 1]")
     linear_comb = min(p, _integer(estimator.linear_comb, "linear_comb", 1))
     protect = (int(np.ceil(np.log(n))) if estimator.embed_protect is None
                else int(_clamp(estimator.embed_protect, "embed_protect", 0, p)))
-    reinforcement = _flag(estimator.reinforcement, "reinforcement")
+    reinforcement = _primary_flag(estimator.reinforcement, "reinforcement")
     if (reinforcement or linear_comb > 1) and protect < 1:
         raise ValueError("embed_protect must be positive when reinforcement or linear combinations are enabled")
     values = {
-        "ntrees": _integer(estimator.n_estimators, "n_estimators", 1),
+        "ntrees": _integer((100 if reinforcement else 500)
+                           if estimator.n_estimators is None else estimator.n_estimators,
+                           "n_estimators", 1),
         "nmin": _integer(estimator.min_samples_leaf, "min_samples_leaf", 1),
         "mtry": _integer(estimator.mtry if estimator.mtry is not None else max(1, p // 2), "mtry", 1, p),
         "nsplit": _integer(estimator.nsplit, "nsplit", 0),
@@ -154,6 +166,29 @@ def build_core_params(estimator, n: int, p: int, seed: int) -> CoreParams:
     for k, v in values.items():
         setattr(cp, k, v)
     return cp
+
+
+def check_resample_preset(value, n, ntrees):
+    """Validate signed in-bag counts; negatives exclude rows from OOB as well."""
+    counts = np.asarray(value)
+    if counts.ndim != 2 or counts.shape != (n, ntrees):
+        raise ValueError("resample_preset must have shape (n_samples, effective n_estimators)")
+    if counts.dtype.kind not in "iuf":
+        raise ValueError("resample_preset must contain finite integral signed counts")
+    # Match R's signed 32-bit integer count domain before native conversion.
+    lower, upper = np.iinfo(np.int32).min, np.iinfo(np.int32).max
+    if (not np.all(np.isfinite(counts)) or np.any(counts < lower)
+            or np.any(counts > upper) or np.any(counts != np.floor(counts))):
+        raise ValueError("resample_preset must contain finite integral signed 32-bit counts")
+    counts = counts.astype(np.int64, copy=True)
+    for j in range(ntrees):
+        # Python integer accumulation avoids overflow before checking the limit.
+        mass = sum(int(v) for v in counts[:, j] if v > 0)
+        if mass == 0:
+            raise ValueError("each resample_preset tree must have positive in-bag counts")
+        if mass > n:
+            raise ValueError("positive column sums in resample_preset must not exceed n_samples")
+    return counts
 
 
 def _normalize_weights(value, length, name):

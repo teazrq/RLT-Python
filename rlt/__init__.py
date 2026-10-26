@@ -7,6 +7,7 @@ survival analysis, ported from the RLT R package.
 from .estimators import RLT_reg, RLT_cla, RLT_surv
 from .importance import ImportanceTable
 from .bands import get_surv_band
+from .metrics import cindex
 
 
 def importance(model):
@@ -20,6 +21,6 @@ def importance(model):
     return model.importance_table()
 
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __all__ = ["RLT_reg", "RLT_cla", "RLT_surv",
-           "ImportanceTable", "importance", "get_surv_band"]
+           "ImportanceTable", "importance", "get_surv_band", "cindex"]

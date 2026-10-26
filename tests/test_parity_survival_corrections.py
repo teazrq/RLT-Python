@@ -124,9 +124,10 @@ class _BandFixture:
     def _grid_and_mapping(self, size):
         return self.timepoints_, np.arange(len(self.timepoints_))
 
-    def _predict_raw(self, x, **kwargs):
+    def predict_details(self, x, **kwargs):
         self.calls += 1
         return {"CHF": self.chf[None], "Cov": self.covariance[None],
+                "timepoints": self.timepoints_,
                 "Survival": np.zeros((1, len(self.chf)))}
 
 

@@ -1,10 +1,10 @@
 # RLT_surv
 
-RLT survival forest — sklearn-compatible estimator porting the RLT R
+RLT survival forest, a sklearn-compatible estimator porting the RLT R
 package's `RLT(model = "survival")` for right-censored time-to-event data.
 
 `RLT_surv` grows a forest of survival trees and predicts individual
-survival functions, cumulative hazards, and (with `var_mode`) their
+survival functions, cumulative hazards, and optional cumulative-hazard
 covariances for simultaneous confidence bands.
 
 ```python
@@ -32,20 +32,22 @@ model.score(X, y)                        # Harrell's c-index
 `y` must be either
 
 - a structured array with fields `event` (0/1 or bool; 1 = event observed)
-  and `time` — the scikit-survival convention, or
+  and `time` (the scikit-survival convention), or
 - a `(time, event)` pair of arrays.
 
 `fit()` validates the response and raises `ValueError` for NaN/Inf in
 `time` (`"NA/Inf not permitted in y"`), NaN in `event`
 (`"NA not permitted in censor"`), or event values outside {0, 1}
 (`"censor must be 0 or 1"`). Note that NaN in `event` can only arrive
-via the tuple path — a structured bool `event` field cannot hold NaN.
+through a floating event array; a structured bool `event` field cannot
+hold NaN. Both tuple components and structured fields must be vectors;
+one-column inputs are accepted with a warning.
 
 ## Constructor
 
 ```python
 RLT_surv(
-    n_estimators=500,
+    n_estimators=None,
     mtry=None,
     min_samples_leaf=5,
     nsplit=0,
@@ -78,14 +80,14 @@ RLT_surv(
 
 ### Parameters
 
-All parameters match [`RLT_reg`](rlt_reg.md) — see that page for the full
-table — with these survival-specific additions:
+See [`RLT_reg`](rlt_reg.md) for shared parameters, with these
+survival-specific choices:
 
 | Parameter | Type / values | Default | Description |
 |---|---|---|---|
-| `split_rule` | "logrank", "suplogrank", "coxgrad" | "logrank" | Splitting criterion for survival trees. |
+| `split_rule` | "logrank", "suplogrank", "coxgrad", or codes 1, 2, 3 | "logrank" | Splitting criterion for survival trees. Integral numeric codes such as 2.0 are also accepted. |
 | `time_grid_size` | int | 0 | Fitting retains every unique failure time. Zero or a size at least as large as the full grid is accepted; smaller positive values are rejected. Use `band_grid_size` when predicting on a reduced grid. |
-| `linear_comb_method` | "default", "coxph", "naive" or int code 1–2 | "default" | How combination loadings are computed ("coxph" = code 1 is the survival default). Unrecognized names or codes emit a `UserWarning` and reset to code 1 (`coxph`). |
+| `linear_comb_method` | "default", "coxph", "naive" or code 1 to 2 | "default" | How combination loadings are computed ("coxph" = code 1 is the default). Integral doubles are accepted. Unknown names/out-of-range codes warn and reset to `coxph`; fractional and nonfinite codes are rejected. |
 | `alpha` | float | 0 | Clamped to `[0, 0.5]` at fit, like R. |
 | `categorical_features` | bool mask / int indices / None | None | See [`RLT_reg`](rlt_reg.md); same behavior for all three estimators. |
 
@@ -93,16 +95,20 @@ table — with these survival-specific additions:
 
 | Method | Returns | Description |
 |---|---|---|
-| `fit(X, y, sample_weight=None, var_prob=None)` | `self` | Grow the forest. `sample_weight` is used by the `coxgrad` split rule. |
+| `fit(X, y, sample_weight=None, var_prob=None, *, resample_preset=None)` | `self` | Grow the forest with optional observation weights, variable-sampling probabilities and signed sampling counts. Observation weights do not replace the chosen split rule. |
 | `predict(X, band_grid_size=0)` | `(n, T)` ndarray | Default survival prediction: `S(t \| x)`. |
 | `predict_survival_function(X, band_grid_size=0)` | `(n, T)` ndarray | Survival probabilities `S(t \| x)`. |
 | `predict_cumulative_hazard_function(X, band_grid_size=0)` | `(n, T)` ndarray | Cumulative hazard `H(t \| x)`. |
 | `predict_risk(X)` | `(n,)` ndarray | Risk score (cumulative hazard summed over the grid). |
-| `predict_var(X, var_mode=None, band_grid_size=0)` | `(S, cov)` | Survival curves plus per-subject covariance of the CHF, `cov` shape `(n, T, T)`; requires `var_mode != "none"` at fit. |
+| `predict_details(X, *, var_est=False, var_mode=None, keep_all=False, band_grid_size=0)` | dict | Hazard increments, CHF, survival, exact timepoints, and optional CHF covariance and per-tree hazards. |
+| `predict_all_trees(X, band_grid_size=0)` | `(n, trees, times)` ndarray | Per-tree hazard increments. |
+| `oob_details()` | dict | OOB hazards on the full training grid, with counts and availability mask. |
+| `tree_summary(tree=0)` / `print_tree(tree=0)` | dict | Readable splits and terminal hazard vectors. |
+| `predict_var(X, var_mode=None, band_grid_size=0)` | `(S, cov)` | Survival curves plus per-subject CHF covariance of shape `(n, T, T)`; requires a fitted variance mode or an explicit compatible prediction-time mode. |
 | `importance_table()` | `ImportanceTable` | Variable-importance summary (Variable / VI, plus SD / Z / Sig when fitted with `importance != "none"` and `var_mode="matched"`); same as `rlt.importance(model)`. |
 | `score(X, y)` | float | Harrell's c-index (higher is better). |
-| `forest_kernel(X1, X2=None, vs_train=False)` | integer ndarray | Forest similarity kernel. |
-| `get_one_tree(tree_id)` | dict of ndarrays | Raw arrays of tree `tree_id` (0-indexed). |
+| `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Forest similarity kernel. |
+| `get_one_tree(tree_id)` | dict | Copied raw arrays and nested node-hazard vectors of tree `tree_id` (zero-based). |
 
 `band_grid_size` restricts returned predictions and covariance matrices to
 a reduced empirical-quantile grid. Hazard increments are accumulated on
@@ -122,11 +128,12 @@ not covariance of the returned survival estimate.
 | `forest_` | dict | The full fitted forest. |
 | `timepoints_` | `(T,)` | Sorted unique failure-time grid. |
 | `nfail_` | int | Number of failure times. |
-| `oob_hazard_` | `(n, T)` | Out-of-bag predicted cumulative hazard. |
-| `oob_error_` | float | Out-of-bag error (1 − c-index style ranking error used by the core). |
+| `oob_hazard_` | `(n, T)` | Out-of-bag hazard increments on the full training failure grid. |
+| `oob_counts_` | `(n,)` | Number of eligible OOB predictions per row; use `oob_details()` to mask unavailable rows. |
+| `oob_error_` | float | One minus concordance using the sum of OOB cumulative hazards over the full grid as risk, restricted to rows with OOB predictions. |
 | `feature_importances_` | `(p,)` | Variable importance (when `importance != "none"`). |
 | `var_vi_` | `(p,)` | Per-variable variance of the VI estimates (when `importance != "none"` and `var_mode="matched"`). |
-| `obstrack_` | `(n, n_estimators)` | Inbag-count matrix (when tracked). |
+| `obstrack_` | `(n, trees)` | Signed sampling-count matrix, with `trees = params_.ntrees` (when tracked). |
 | `n_features_in_` | int | Number of predictors. |
 
 ## Examples

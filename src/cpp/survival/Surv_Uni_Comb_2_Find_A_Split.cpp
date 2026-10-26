@@ -104,6 +104,12 @@ void Surv_Uni_Comb_Find_A_Split(Comb_Split_Class& OneSplit,
   {
     for (size_t j = 0; j <= NFail; j++)
       All_Risk_vec(j) = All_Risk_Cum(j);
+    if (!useobsweight)
+    {
+      vec fail = conv_to<vec>::from(All_Fail);
+      Temp_Vec = (1.0 - (fail - 1.0) / (All_Risk_vec - 1.0)) % fail / All_Risk_vec;
+      Temp_Vec.elem(find(All_Risk_vec < 2)).zeros();
+    }
   }
 
   // Score each variable by its best univariate split

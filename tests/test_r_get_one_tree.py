@@ -169,13 +169,11 @@ def test_get_one_tree_classification_lc_tree_works():
 
 
 def test_get_one_tree_errors_on_tree_index_negative():
-    # R: get.one.tree(fit, 0) errors because indices are 1-based there; the
-    # equivalent out-of-range index in 0-based Python indexing is -1...
-    # negative indices do NOT raise, so use n_estimators (first invalid >= 0)
+    # Negative indices are invalid rather than indexing from the end.
     d = generate_simple_regression(n=80, p=10)
     fit = RLT_reg(n_estimators=30, n_jobs=2, verbose=0, random_state=1).fit(d["X"], d["y"])
     with pytest.raises(IndexError):
-        fit.get_one_tree(30)
+        fit.get_one_tree(-1)
 
 
 def test_get_one_tree_errors_on_tree_index_above_ntrees():

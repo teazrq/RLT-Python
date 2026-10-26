@@ -79,7 +79,8 @@ fit = RLT_surv(
 )
 fit.fit(X, y)
 
-S, cov = fit.predict_var(testX)
+prediction = fit.predict_details(testX, var_est=True)
+S, cov = prediction["Survival"], prediction["Cov"]
 ```
 
 ## Choose a Display Range
@@ -124,16 +125,24 @@ by this CHF-based band.
 
 The smoothed approach approximates the covariance to choose marginal
 standardizing scales; simulations still use the supplied CHF covariance.
-Python uses a B-spline smoother on actual failure times, rather than R's
-`mgcv` smoother on grid indices. Their smoothed bands are not numerically
-interchangeable.
+The Python calculation follows the Gaussian natural cubic tensor smoother
+and GCV search used by R's `mgcv` 1.9-4 on grid indices. It requires no R
+runtime. Frozen reference fixtures compare its intermediate matrices,
+optimized covariance surfaces, and final marginal scales.
 
 ```python
 from rlt import get_surv_band
 
-SurvBand = get_surv_band(fit, testX, alpha=0.05, approach="smoothed",
+SurvBand = get_surv_band(prediction, alpha=0.05, approach="smoothed",
                          k_rank=10, nsim=5000, seed=0)
 ```
+
+The saved result already contains CHF, its covariance, and the selected
+time vector. Reusing it for another rank or confidence level avoids
+recomputing forest predictions. The model convenience call
+`get_surv_band(fit, testX, ...)` remains available. A tracking-only fit can
+use `var_mode="IJ"` or `"jack"` in that call, or in `predict_details`,
+when the fitted resampling counts support the requested method.
 
 ```python
 import matplotlib.pyplot as plt
@@ -142,7 +151,7 @@ fig, axes = plt.subplots(1, 2, figsize=(10, 4.5), sharey=True)
 titles = ["Interior lower-risk target", "Interior higher-risk target"]
 
 for i, ax in enumerate(axes):
-    tp = fit.timepoints_[plot_id]
+    tp = prediction["timepoints"][plot_id]
     S_i = np.clip(S[i, plot_id], 0, 1)
     truth = np.exp(-xlink(testX)[i] * tp)
 
@@ -171,7 +180,7 @@ proportion instead of a fixed `k_rank`:
 
 ```python
 SurvBand_prop = get_surv_band(
-    fit, testX, alpha=0.05,
+    prediction, alpha=0.05,
     approach="smoothed",
     k_mode="proportion",
     k_prop=0.95,
@@ -179,5 +188,9 @@ SurvBand_prop = get_surv_band(
 ```
 
 Increasing `nsim` improves Monte Carlo precision for the simulated
-critical value at the cost of runtime. The plotted simulation does not
-establish the method's coverage.
+critical value at the cost of runtime. Python and R use different random
+streams, so the same integer seed does not imply identical simulated band
+limits. Smoother diagnostics report its GCV parameters and convergence;
+parameters can be unstable when the GCV objective is flat even if the
+fitted surface is stable. The plotted simulation and cross-language
+numerical checks do not establish the method's statistical coverage.

@@ -125,6 +125,9 @@ Diff-seed predictions equal to Run A: False
 - Keep one seeded `np.random.default_rng(...)` near the top of your script to make the whole workflow reproducible.
 - The same pattern works for classification and survival: place the data-simulation seed before model fitting and give each estimator a fixed `random_state`.
 - `random_state` also accepts a NumPy `RandomState` or `Generator` instance; a fresh seed is drawn from it for each forest. Use a separate generator for data simulation.
+- When `random_state=None`, fitting draws from NumPy's global RNG, so
+  `np.random.seed(...)` controls omitted forest seeds. This does not make
+  NumPy's surrounding random stream match R's.
 
 ## Cross-language note
 

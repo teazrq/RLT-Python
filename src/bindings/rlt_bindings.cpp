@@ -343,6 +343,7 @@ static py::dict RegUniCombForestFit(const dmat_t& x, const dmat_t& y,
   if (importance) out["VarImp"] = vec2np(VarImp);
   if (importance && Param.var_mode == 1) out["VarVI"] = vec2np(VarVI);
   if (Prediction.n_elem > 0) {
+    out["OOBCount"] = uvec2np(oob_count);
     out["Prediction"] = vec2np(Prediction);
     uvec valid = find(oob_count > 0);
     out["Error"] = py::float_(
@@ -497,6 +498,7 @@ static py::dict ClaUniCombForestFit(const dmat_t& x, const imat_t& y,
   if (importance) out["VarImp"] = vec2np(VarImp);
   if (importance && Param.var_mode == 1) out["VarVI"] = vec2np(VarVI);
   if (Prediction.n_elem > 0) {
+    out["OOBCount"] = uvec2np(oob_count);
     uvec PredClass = index_max(Prediction, 1);
     out["Prediction"] = uvec2np(PredClass);
     out["Prob"] = mat2np(Prediction);
@@ -682,6 +684,7 @@ static py::dict SurvUniCombForestFit(const dmat_t& x, const imat_t& y,
   if (importance) out["VarImp"] = vec2np(VarImp);
   if (importance && Param.var_mode == 1) out["VarVI"] = vec2np(VarVI);
   if (Prediction.n_elem > 0) {
+    out["OOBCount"] = uvec2np(oob_count);
     out["Prediction"] = mat2np(Prediction);
     uvec valid = find(oob_count > 0);
     vec oobcch(Prediction.n_rows, fill::zeros);
@@ -913,6 +916,7 @@ static py::dict RegUniForestFit(const dmat_t& x, const dmat_t& y,
   if (importance) out["VarImp"] = vec2np(VarImp);
   if (importance && Param.var_mode == 1) out["VarVI"] = vec2np(VarVI);
   if (Prediction.n_elem > 0) {
+    out["OOBCount"] = uvec2np(oob_count);
     out["Prediction"] = vec2np(Prediction);
     uvec valid = find(oob_count > 0);
     out["Error"] = py::float_(
@@ -1060,6 +1064,7 @@ static py::dict ClaUniForestFit(const dmat_t& x, const imat_t& y,
   if (importance) out["VarImp"] = vec2np(VarImp);
   if (importance && Param.var_mode == 1) out["VarVI"] = vec2np(VarVI);
   if (Prediction.n_elem > 0) {
+    out["OOBCount"] = uvec2np(oob_count);
     uvec PredClass = index_max(Prediction, 1);
     out["Prediction"] = uvec2np(PredClass);
     out["Prob"] = mat2np(Prediction);
@@ -1237,6 +1242,7 @@ static py::dict SurvUniForestFit(const dmat_t& x, const imat_t& y,
   if (importance && Param.var_mode == 1) out["VarVI"] = vec2np(VarVI);
 
   if (Prediction.n_elem > 0) {
+    out["OOBCount"] = uvec2np(oob_count);
     out["Prediction"] = mat2np(Prediction);
 
     uvec valid = find(oob_count > 0);
@@ -1806,6 +1812,35 @@ static py::dict Kernel_Self_OOB_Comb(const py::list& splitvar,
 // Utilities
 // ============================================================
 
+// Shared by simulation and deterministic cross-language draw fixtures.
+static py::array_t<double> mc_band_from_draws(const arma::vec& sd,
+                                            arma::mat X,
+                                            const arma::vec& alpha) {
+  X.each_col() /= sd;
+  arma::vec cutoffs = max(abs(X), 0).t();
+  arma::vec q = quantile(cutoffs, conv_to<vec>::from(1.0 - alpha));
+  arma::mat band = sd * q.t();
+  py::array_t<double> out({(py::ssize_t)q.n_elem, (py::ssize_t)sd.n_elem});
+  auto w = out.mutable_unchecked<2>();
+  for (size_t ia = 0; ia < q.n_elem; ia++)
+    for (size_t j = 0; j < sd.n_elem; j++) w(ia, j) = band(j, ia);
+  return out;
+}
+
+static py::array_t<double> mc_band_from_draws_np(const dmat_t& mar_sd,
+                                               const dmat_t& draws,
+                                               const dmat_t& alpha) {
+  arma::vec sd = np2vec(mar_sd);
+  arma::mat X = np2mat(draws);
+  arma::vec a = np2vec(alpha);
+  if (sd.is_empty() || !sd.is_finite() || arma::any(sd <= 0) ||
+      X.n_rows != sd.n_elem || X.n_cols == 0 || !X.is_finite())
+    throw std::invalid_argument("draws must be finite with one row per positive marginal scale");
+  if (a.is_empty() || !a.is_finite() || arma::any(a < 0) || arma::any(a > 0.5))
+    throw std::invalid_argument("alpha must contain finite levels in [0, 0.5]");
+  return mc_band_from_draws(sd, std::move(X), a);
+}
+
 // Monte-Carlo simultaneous band critical values (from SurvUniForest.cpp):
 // simulate nsim draws from N(0, S), standardize by mar_sd, take the
 // (1 - alpha) quantile of the max |Z|; returns mar_sd * crit.
@@ -1836,7 +1871,11 @@ static py::array_t<double> mc_band_np(const dmat_t& mar_sd,
   if (!arma::chol(L, Sigma, "lower")) {
     arma::vec vals;
     arma::mat vecs;
-    if (!arma::eig_sym(vals, vecs, Sigma) || vals.min() < -tolerance)
+    // Match the scale-relative tolerance used by RcppArmadillo's mvnrnd.
+    const double psd_tolerance = 100.0 * std::numeric_limits<double>::epsilon() *
+        arma::norm(Sigma, "fro");
+    if (!std::isfinite(psd_tolerance) || !arma::eig_sym(vals, vecs, Sigma) ||
+        vals.min() < -psd_tolerance)
       throw std::invalid_argument("S must be positive semidefinite");
     vals.elem(arma::find(vals < 0)).zeros();
     L = vecs * arma::diagmat(arma::sqrt(vals));
@@ -1853,21 +1892,7 @@ static py::array_t<double> mc_band_np(const dmat_t& mar_sd,
       Z(i, s) = std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * pi * u2);
     }
   }
-  arma::mat X = L * Z;
-  X.each_col() /= sd;
-
-  arma::vec cutoffs = max(abs(X), 0).t();
-
-  // q: one critical value per alpha level (column vector)
-  arma::vec q = quantile(cutoffs, conv_to<vec>::from(1.0 - a));
-
-  // band (d x nalpha): mar_sd (d) outer crit (nalpha)
-  arma::mat band = sd * q.t();
-  py::array_t<double> out({(py::ssize_t)q.n_elem, (py::ssize_t)d});
-  auto w = out.mutable_unchecked<2>();
-  for (size_t ia = 0; ia < q.n_elem; ia++)
-    for (size_t j = 0; j < d; j++) w(ia, j) = band(j, ia);
-  return out;
+  return mc_band_from_draws(sd, L * Z, a);
 }
 
 static double cindex_np(const dmat_t& y, const imat_t& censor,
@@ -2061,6 +2086,8 @@ PYBIND11_MODULE(_core, m) {
 
   m.def("mc_band", &mc_band_np, py::arg("mar_sd"), py::arg("S"),
         py::arg("alpha"), py::arg("nsim"), py::arg("seed"));
+  m.def("_mc_band_from_draws", &mc_band_from_draws_np, py::arg("mar_sd"),
+        py::arg("draws"), py::arg("alpha"));
 
   m.def("cindex", &cindex_np, py::arg("y"), py::arg("censor"),
         py::arg("pred"));

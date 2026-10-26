@@ -493,6 +493,9 @@ void Surv_Uni_Comb_Linear(Comb_Split_Class& OneSplit,
     {
       // Unweighted suplogrank
       vec Temp_Vec(NFail+1, fill::zeros);
+      vec fail = conv_to<vec>::from(All_Fail_Count);
+      Temp_Vec = (1.0 - (fail - 1.0) / (All_Risk - 1.0)) % fail / All_Risk;
+      Temp_Vec.elem(find(All_Risk < 2)).zeros();
       
       Surv_Uni_Split_Cont(TempSplit,
                           allid,
@@ -641,6 +644,8 @@ void Surv_Uni_Comb_Linear(Comb_Split_Class& OneSplit,
   }
   
   // Safety check
+  if (!std::isfinite(TempSplit.score))
+    TempSplit.score = -1;
   if (TempSplit.score > 0)
   {
     size_t n_left = sum(U1 <= TempSplit.value);
