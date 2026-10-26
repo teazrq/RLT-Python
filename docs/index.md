@@ -1,7 +1,7 @@
 # rlt — Reinforcement Learning Trees for Python
 
-[![CI](https://github.com/rqzhu-aide/rlt-python/actions/workflows/ci.yml/badge.svg)](https://github.com/rqzhu-aide/rlt-python/actions/workflows/ci.yml)
-[![Docs](https://github.com/rqzhu-aide/rlt-python/actions/workflows/docs.yml/badge.svg)](https://github.com/rqzhu-aide/rlt-python/actions/workflows/docs.yml)
+[![CI](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml)
+[![Docs](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml)
 [![PyPI](https://img.shields.io/pypi/v/rlt-forests.svg)](https://pypi.org/project/rlt-forests/)
 
 `rlt` is the Python port of the [RLT R package](https://cran.r-project.org/package=RLT)
@@ -92,8 +92,8 @@ pip install rlt-forests
 From source:
 
 ```bash
-git clone https://github.com/rqzhu-aide/rlt-python
-cd rlt-python
+git clone https://github.com/teazrq/RLT-Python
+cd RLT-Python
 pip install .
 ```
 

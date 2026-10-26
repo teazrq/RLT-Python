@@ -3,9 +3,9 @@ site_description: >-
   Reinforcement Learning Trees for Python — random forests with embedded-model
   variable selection and linear-combination splits, for regression,
   classification, and survival analysis.
-site_url: https://rqzhu-aide.github.io/rlt-python/
-repo_url: https://github.com/rqzhu-aide/rlt-python
-repo_name: rqzhu-aide/rlt-python
+site_url: https://teazrq.github.io/RLT-Python/
+repo_url: https://github.com/teazrq/RLT-Python
+repo_name: teazrq/RLT-Python
 edit_uri: edit/main/docs/
 
 theme:

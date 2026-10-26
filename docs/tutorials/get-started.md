@@ -27,15 +27,15 @@ sudo apt-get install -y libarmadillo-dev liblapack-dev \
 Install the development version from GitHub:
 
 ```bash
-git clone https://github.com/rqzhu-aide/rlt-python
-cd rlt-python
+git clone https://github.com/teazrq/RLT-Python
+cd RLT-Python
 pip install .
 ```
 
 Or, directly from the repository URL:
 
 ```bash
-pip install git+https://github.com/rqzhu-aide/rlt-python
+pip install git+https://github.com/teazrq/RLT-Python
 ```
 
 ### Verify the installation

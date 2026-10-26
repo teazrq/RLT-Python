@@ -26,8 +26,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/rqzhu-aide/rlt-python"
-Source = "https://github.com/rqzhu-aide/rlt-python"
+Homepage = "https://github.com/teazrq/RLT-Python"
+Source = "https://github.com/teazrq/RLT-Python"
 
 [project.optional-dependencies]
 test = ["pytest", "scikit-learn>=1.3"]
