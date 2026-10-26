@@ -59,7 +59,7 @@ RLT_reg(
 |---|---|---|---|
 | `n_estimators` | int | 500 | Number of trees (`ntrees` in R). R uses 100 when reinforcement is on. |
 | `mtry` | int or None | None | Variables considered per split; None → max(1, p // 2). |
-| `min_samples_leaf` | int | 5 | Minimum terminal node size (`nmin`). |
+| `min_samples_leaf` | int | 5 | Node-size stopping threshold (`nmin`): nodes with at most this many observations are not split; child nodes may be smaller. |
 | `nsplit` | int | 0 | Random cut points per variable; 0 = consider all (best split). |
 | `resample_replace` | bool | True | Resample with replacement (bootstrap). |
 | `resample_prob` | float or None | None | Resampling proportion; None → 1.0 if replace else 0.8. |
@@ -74,7 +74,7 @@ RLT_reg(
 | `embed_*` | various | see signature | Embedded forest controls (`embed_ntrees`, `embed_mtry`, `embed_nmin`, `embed_nsplit`, `embed_resample_replace`, `embed_resample_prob`, `embed_mute`, `embed_protect`, `embed_threshold`). |
 | `n_jobs` | int | -1 | OpenMP threads (-1 or 0 = all cores). |
 | `verbose` | int | 0 | Verbosity level. |
-| `random_state` | int, RandomState, Generator, or None | None | Seed; same value + data + params → same forest. |
+| `random_state` | int, RandomState, or None | None | Forest seed; repeat with the same data, parameters, and numerical environment. |
 
 ## Methods
 

@@ -1,10 +1,9 @@
-"""Bit-exact parity tests for the OOB self-kernel vs RLT >= 6.1.1.
+"""Numerical parity tests for the OOB self-kernel.
 
-The OOB kernel exists only in RLT 6.1.0+, so these use the system RLT
-install (/home/tez/R/library) rather than the 6.0.2-pinned parity Rlib.
-Forest fitting is bit-identical between the two R versions (6.1.x only
-added the kernel code path and removed an unused variable), verified by
-the rest of the parity suite still passing.
+These require an RLT installation with the OOB kernel API in a shared R
+library. Use the same corrected source revision on both sides. Count
+matrices are compared exactly; normalized entries allow serialization
+rounding from R's write().
 """
 import os
 import shutil
@@ -16,11 +15,10 @@ import pytest
 
 from rlt import RLT_reg
 
-RSCRIPT = shutil.which("Rscript")
+RSCRIPT = os.environ.get("RLT_RSCRIPT") or shutil.which("Rscript")
 HAS_R = RSCRIPT is not None and os.environ.get("RLT_SKIP_R_TESTS") is None
 
-R_PREAMBLE = """.libPaths(c("/home/tez/R/library", .libPaths()))
-library(RLT)
+R_PREAMBLE = """library(RLT)
 stopifnot(packageVersion("RLT") >= "6.1.0")
 """
 
@@ -28,11 +26,12 @@ needs_r = pytest.mark.skipif(not HAS_R, reason="R + RLT >= 6.1.1 not available")
 
 
 def _run_r(script: str):
-    with tempfile.NamedTemporaryFile("w", suffix=".R", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".R", delete=False,
+                                     encoding="utf-8") as f:
         f.write(R_PREAMBLE + script)
         path = f.name
     try:
-        out = subprocess.run([RSCRIPT, path], capture_output=True, text=True,
+        out = subprocess.run([RSCRIPT, "--vanilla", path], capture_output=True, text=True,
                              timeout=600)
         if out.returncode != 0:
             raise RuntimeError(out.stderr[-2000:])
@@ -52,15 +51,15 @@ class TestParityKernelOOB:
         np.savetxt(d / "X.csv", X, fmt="%.17g", delimiter=",")
         np.savetxt(d / "y.csv", y, fmt="%.17g")
         _run_r(f"""
-            X <- as.matrix(read.table("{d}/X.csv", sep = ",", header = FALSE))
-            y <- scan("{d}/y.csv", quiet = TRUE)
+            X <- as.matrix(read.table("{d.as_posix()}/X.csv", sep = ",", header = FALSE))
+            y <- scan("{d.as_posix()}/y.csv", quiet = TRUE)
             fit <- RLT(X, y, ntrees = 40, seed = 42, ncores = 1,
                        model = "regression", verbose = FALSE,
                        param.control = list(resample.track = TRUE))
             K <- forest.kernel(fit, X1 = X, oob = TRUE)
-            write(as.vector(K$Kernel), file = "{d}/K.csv", ncolumns = 1)
-            write(as.vector(K$N), file = "{d}/N.csv", ncolumns = 1)
-            write(as.vector(K$C), file = "{d}/C.csv", ncolumns = 1)
+            write(as.vector(K$Kernel), file = "{d.as_posix()}/K.csv", ncolumns = 1)
+            write(as.vector(K$N), file = "{d.as_posix()}/N.csv", ncolumns = 1)
+            write(as.vector(K$C), file = "{d.as_posix()}/C.csv", ncolumns = 1)
         """)
         m = RLT_reg(n_estimators=40, random_state=42, n_jobs=1,
                     resample_track=True).fit(X, y)
@@ -84,16 +83,16 @@ class TestParityKernelOOB:
         np.savetxt(d / "X.csv", X, fmt="%.17g", delimiter=",")
         np.savetxt(d / "y.csv", y, fmt="%.17g")
         _run_r(f"""
-            X <- as.matrix(read.table("{d}/X.csv", sep = ",", header = FALSE))
-            y <- scan("{d}/y.csv", quiet = TRUE)
+            X <- as.matrix(read.table("{d.as_posix()}/X.csv", sep = ",", header = FALSE))
+            y <- scan("{d.as_posix()}/y.csv", quiet = TRUE)
             fit <- RLT(X, y, ntrees = 20, seed = 42, ncores = 1,
                        model = "regression", verbose = FALSE,
                        param.control = list(resample.track = TRUE,
                                             linear.comb = 2))
             K <- forest.kernel(fit, X1 = X, oob = TRUE)
-            write(as.vector(K$Kernel), file = "{d}/K.csv", ncolumns = 1)
-            write(as.vector(K$N), file = "{d}/N.csv", ncolumns = 1)
-            write(as.vector(K$C), file = "{d}/C.csv", ncolumns = 1)
+            write(as.vector(K$Kernel), file = "{d.as_posix()}/K.csv", ncolumns = 1)
+            write(as.vector(K$N), file = "{d.as_posix()}/N.csv", ncolumns = 1)
+            write(as.vector(K$C), file = "{d.as_posix()}/C.csv", ncolumns = 1)
         """)
         m = RLT_reg(n_estimators=20, random_state=42, n_jobs=1,
                     resample_track=True, linear_comb=2).fit(X, y)

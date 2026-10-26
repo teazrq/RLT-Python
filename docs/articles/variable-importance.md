@@ -7,6 +7,7 @@ importance article.
 ## Data
 
 We generate continuous and categorical predictors with a continuous outcome.
+Each forest declares the last five columns in `categorical_features`.
 
 ```python
 import numpy as np
@@ -62,6 +63,7 @@ fit_perm = RLT_reg(
     resample_replace=samplereplace,
     nsplit=nsplit,
     importance="permute",  # permutation-based VI
+    categorical_features=range(p // 2, p),
     n_jobs=1,
     random_state=1,
 )
@@ -72,8 +74,8 @@ np.round(fit_perm.feature_importances_, 3)
 ```
 
 ```
-array([ 1.010e-01,  7.940e-01,  1.690e-01,  4.270e-01, -2.000e-03,
-        4.014e+00, -1.500e-02,  1.000e-03,  7.000e-03,  6.800e-02])
+array([ 7.500e-02,  5.440e-01,  1.290e-01,  5.340e-01,  2.100e-02,
+        3.994e+00, -5.400e-02,  3.000e-03, -1.600e-02,  4.100e-02])
 ```
 
 ```python
@@ -90,8 +92,8 @@ plt.show()
 
 ## Option B - Distributed Assignment Importance
 
-This configuration assigns importance using distributed attribution with
-OOB tracking. Use `importance="distribute"` for distributed assignment
+This configuration evaluates importance on out-of-bag observations.
+Use `importance="distribute"` for distributed assignment
 importance. Unlike permutation importance, distributed importance works by
 probabilistically routing OOB observations through the tree when a split
 on the target variable is encountered. This requires sufficient OOB
@@ -107,6 +109,7 @@ fit_dist = RLT_reg(
     resample_prob=0.632,      # ~63.2% in-bag, ~36.8% OOB
     resample_replace=False,   # without replacement
     importance="distribute",  # distributed assignment VI
+    categorical_features=range(p // 2, p),
     n_jobs=1,
     random_state=1,
 )
@@ -117,8 +120,8 @@ np.round(fit_dist.feature_importances_, 3)
 ```
 
 ```
-array([-5.00e-02,  6.96e-01,  8.00e-02,  5.45e-01, -1.90e-02,  4.19e+00,
-        3.00e-03, -6.00e-02,  0.00e+00,  2.10e-02])
+array([-5.700e-02,  6.810e-01,  8.200e-02,  5.580e-01, -4.200e-02,
+        3.949e+00, -1.000e-03, -8.500e-02, -3.800e-02,  2.100e-02])
 ```
 
 ```python
@@ -130,9 +133,9 @@ ax.set_xlabel("Predictors")
 plt.show()
 ```
 
-Both measures recover the design: variables 1–4 (indices 1:6) and
-especially the categorical variable at index 5 carry the signal; the rest
-are noise.
+The simulated signal uses continuous predictors at indices 1 through 4
+and the categorical predictor at index 5. The other predictors are noise;
+their estimated importance can still vary above or below zero.
 
 ## Variance of variable importance (matched forests)
 
@@ -149,6 +152,7 @@ fit_vi = RLT_reg(
     min_samples_leaf=nmin,
     importance="distribute",
     var_mode="matched",   # per-variable variance of VI
+    categorical_features=range(p // 2, p),
     n_jobs=1,
     random_state=1,
 )
@@ -159,8 +163,8 @@ np.round(fit_vi.var_vi_, 4)
 ```
 
 ```
-array([ 9.500e-03, -8.670e-02,  1.000e-04,  7.000e-02,  1.830e-02,
-        1.366e-01, -7.000e-04, -2.300e-03,  9.300e-03,  3.140e-02])
+array([ 5.00e-04,  1.07e-02,  1.39e-02,  3.79e-02, -2.72e-02,  5.44e-01,
+       -5.50e-03,  3.80e-03, -1.00e-04,  1.33e-02])
 ```
 
 The friendlier view is `importance_table()`, which prints `Variable`,
@@ -176,16 +180,16 @@ fit_vi.importance_table()
 ```
 Variable             VI           SD          Z  Sig
 ----------------------------------------------------------
-V1              -0.0130     0.097625      -0.13
-V2               0.6622           NA         NA
-V3               0.1547     0.007742      19.98  ***
-V4               0.4933     0.264541       1.86  *
-V5              -0.0993     0.135343      -0.73
-V6               4.1172     0.369655      11.14  ***
-V7              -0.0187           NA         NA
-V8              -0.0093           NA         NA
-V9              -0.0358     0.096533      -0.37
-V10              0.0322     0.177089       0.18
+V1              -0.0209     0.021899      -0.95
+V2               0.5996     0.103274       5.81  ***
+V3               0.0609     0.117999       0.52
+V4               0.5832     0.194568       3.00  ***
+V5              -0.0230           NA         NA
+V6               3.8730     0.737591       5.25  ***
+V7              -0.0231           NA         NA
+V8              -0.0973     0.061325      -1.59
+V9              -0.0141           NA         NA
+V10             -0.0504     0.115454      -0.44
 
 Note: 3 variable(s) with negative variance estimate (SD, Z shown as NA)
 ```
@@ -193,11 +197,10 @@ Note: 3 variable(s) with negative variance estimate (SD, Z shown as NA)
 Two things to note in this output:
 
 - **Negative variance estimates.** The matched U-statistic variance can
-  come out negative for noise variables. Exactly like R, such variables
+  come out negative in a finite forest. Exactly like R, such variables
   get `NA` for `SD` and `Z` and an empty significance code, and the
   table appends a trailing `Note` counting them. A negative variance
-  estimate is itself informative: it flags variables with no stable
-  importance signal.
+  estimate does not by itself show that a variable is noise.
 - **Without matched variance**, the table simply has no `SD` / `Z` /
   `Sig` columns — `importance_table()` works for any
   `importance != "none"` fit and prints just `Variable` and `VI`.
@@ -216,6 +219,6 @@ rlt.importance(fit_vi)   # same table as fit_vi.importance_table()
 !!! note
     `var_mode="matched"` implies the matched-forest preset: subsampling
     without replacement at 50% and an even tree count. When importance is
-    requested, use `importance="distribute"` — permutation importance
-    (`"permute"`) is left as-is, but distributed importance is what the
-    variance machinery in the core expects.
+    omitted, distributed importance is enabled automatically. Both
+    `importance="permute"` and `importance="distribute"` can be requested
+    explicitly; the selected importance measure is retained.

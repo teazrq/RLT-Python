@@ -1,11 +1,11 @@
 // Tensor-product penalized B-spline smoother for survival covariance
-// smoothing (Python port of RLT's get.surv.band "smoothed" approach,
-// replacing mgcv::gam(z ~ te(i, j, k))).
+// smoothing. This is a Python alternative to RLT's index-coordinate
+// mgcv::gam(z ~ te(i, j, k)), not a numerically equivalent port.
 //
 // The smoother fits z_{ab} = f(t_a, t_b) + e over the covariance matrix
-// entries, with f a rank-1 tensor-product of cubic B-spline bases in each
-// coordinate, penalized by second differences (approximate thin-plate /
-// P-spline behavior like mgcv's te() with bs="tp" defaults).
+// entries, with f a tensor-product of cubic B-spline bases in each
+// coordinate, penalized by second differences and one shared smoothing
+// parameter selected using an approximate GCV score.
 //
 // Layout note: covariance matrices here are timepoints x timepoints with
 // irregular spacing; we map each coordinate through its knot sequence so

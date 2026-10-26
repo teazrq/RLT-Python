@@ -1,4 +1,4 @@
-# rlt — Reinforcement Learning Trees for Python
+# RLT for Python
 
 [![CI](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml)
 [![Docs](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml)
@@ -8,12 +8,13 @@
 (Reinforcement Learning Trees, Zhu, Zeng & Kosorok, and successors) —
 random forests with **embedded-model variable selection** and
 **linear-combination splits**, for regression, classification, and survival
-analysis. It is **fully scikit-learn compatible**: if you know how to use
-`RandomForestRegressor`, you already know how to use `rlt`.
+analysis. Its estimators use scikit-learn's `fit`, `predict`, parameter,
+and pipeline interfaces.
 
-The ~19k-line OpenMP/Armadillo C++ compute core is the exact core of the R
-package (vendored, R/Rcpp-free), exposed through pybind11 — so results are
-R-grade fast and parallel.
+The shared tree algorithms come from RLT source version 6.1.1, with
+R/Rcpp interfaces replaced by pybind11. Python has its own array and
+estimator APIs. Its optional smoothed confidence bands use a separate
+spline approximation rather than R's `mgcv` smoother.
 
 ---
 
@@ -203,7 +204,7 @@ See [Get Started](tutorials/get-started.md) for platform notes.
     smodel.fit(X, ys)
     S, cov = smodel.predict_var(X)
 
-    band = get_surv_band(smodel, X, alpha=0.05, approach="smoothed")
+    band = get_surv_band(smodel, X[:3], alpha=0.05, approach="smoothed")
     band["lower"], band["upper"]  # simultaneous survival bands
     ```
 
@@ -225,7 +226,7 @@ See [Get Started](tutorials/get-started.md) for platform notes.
     Kt = model.forest_kernel(X_test, X, vs_train=True)  # needs resample_track=True
 
     # OOB self-kernel (RLT >= 6.1.0): co-occurrence only from trees where
-    # both observations are out-of-bag — unbiased for DoF estimation
+    # both observations were excluded from fitting that tree
     oob = model.forest_kernel(X, oob=True)
     oob["Kernel"]  # (n, n) normalized co-occurrence in [0, 1]
     ```

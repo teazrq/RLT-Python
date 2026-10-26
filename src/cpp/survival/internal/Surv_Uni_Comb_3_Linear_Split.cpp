@@ -242,7 +242,7 @@ void Surv_Uni_Comb_Linear(Comb_Split_Class& OneSplit,
       wsum += SURV_DATA.obsweight(obs_id(i));
     double wbar = wsum / N;
     for (size_t i = 0; i < N; i++)
-      node_wt(i) = SURV_DATA.obsweight(obs_id(i)) / wbar;
+      node_wt(i) = survival_node_weight(SURV_DATA.obsweight(obs_id(i)), wsum, wbar, N);
   }
   
   // Manually collapse Y into contiguous integers for this node

@@ -75,3 +75,4 @@ nav:
       - RLT_cla: reference/rlt_cla.md
       - RLT_surv: reference/rlt_surv.md
       - get_surv_band: reference/get_surv_band.md
+      - Comparing Python and R: reference/r-parity.md

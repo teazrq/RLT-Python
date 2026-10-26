@@ -84,7 +84,7 @@ table — with these survival-specific additions:
 | Parameter | Type / values | Default | Description |
 |---|---|---|---|
 | `split_rule` | "logrank", "suplogrank", "coxgrad" | "logrank" | Splitting criterion for survival trees. |
-| `time_grid_size` | int | 0 | Number of unique failure times used (0 = all). |
+| `time_grid_size` | int | 0 | Fitting retains every unique failure time. Zero or a size at least as large as the full grid is accepted; smaller positive values are rejected. Use `band_grid_size` when predicting on a reduced grid. |
 | `linear_comb_method` | "default", "coxph", "naive" or int code 1–2 | "default" | How combination loadings are computed ("coxph" = code 1 is the survival default). Unrecognized names or codes emit a `UserWarning` and reset to code 1 (`coxph`). |
 | `alpha` | float | 0 | Clamped to `[0, 0.5]` at fit, like R. |
 | `categorical_features` | bool mask / int indices / None | None | See [`RLT_reg`](rlt_reg.md); same behavior for all three estimators. |
@@ -104,9 +104,16 @@ table — with these survival-specific additions:
 | `forest_kernel(X1, X2=None, vs_train=False)` | integer ndarray | Forest similarity kernel. |
 | `get_one_tree(tree_id)` | dict of ndarrays | Raw arrays of tree `tree_id` (0-indexed). |
 
-`band_grid_size` restricts predictions (and covariance matrices) to a
-reduced quantile-based time grid — useful because full covariance arrays
-grow with `T²`.
+`band_grid_size` restricts returned predictions and covariance matrices to
+a reduced empirical-quantile grid. Hazard increments are accumulated on
+the full failure-time grid before selecting the requested times. Reducing
+the output grid therefore does not change the cumulative hazard or
+survival estimate at a retained time.
+
+Ordinary forests return `exp(-CHF)` as survival. Linear combination
+forests return the mean of tree product-limit survival curves, which can
+differ from `exp(-CHF)`. In both cases `predict_var` returns CHF covariance,
+not covariance of the returned survival estimate.
 
 ## Fitted attributes
 

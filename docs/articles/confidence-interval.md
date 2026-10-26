@@ -1,11 +1,11 @@
 # Survival Confidence Band
 
 This page demonstrates how to construct simultaneous confidence bands for
-individual survival curves predicted by `rlt` — the Python port of the RLT
+conditional survival curves predicted by `rlt`, the Python port of the RLT
 R package's survival confidence band article. The example uses the smoothed
 covariance approach in `get_surv_band()`.
 
-Two details matter for a sensible visualization:
+Two details matter for interpretation:
 
 - Target points should be inside the observed predictor domain, especially for the important variables.
 - The displayed time range should avoid the far tail where very few training observations remain at risk.
@@ -82,11 +82,13 @@ fit.fit(X, y)
 S, cov = fit.predict_var(testX)
 ```
 
-## Restrict to Supported Follow-up Times
+## Choose a Display Range
 
 The fitted model can return predictions over the observed event-time grid,
 but the far right tail has little data support. For this example, we only
-display the region `t <= 2`.
+display the region `t <= 2`. This cutoff is an illustration, not a
+criterion establishing sufficient support. The band is constructed over
+the full returned grid, even when the plot shows only part of it.
 
 ```python
 risk_set = np.array([np.sum(time >= t) for t in fit.timepoints_])
@@ -110,9 +112,21 @@ Number of plotted timepoints: 136
 
 ## Simultaneous Confidence Band
 
-`get_surv_band()` with `approach="smoothed"` constructs a simultaneous
-confidence band using a smoothed low-rank approximation of the covariance
-matrix.
+With `alpha=0.05`, `get_surv_band()` constructs a nominal 95% simultaneous
+band separately for each target's conditional survival curve over the
+returned grid. It does not provide joint coverage across targets or a
+prediction interval for a target's event time.
+
+The reference curve is `exp(-CHF)`. It equals `S` for this ordinary forest.
+For a linear combination forest, returned survival is instead the mean
+of tree product-limit curves, whose variation is not directly estimated
+by this CHF-based band.
+
+The smoothed approach approximates the covariance to choose marginal
+standardizing scales; simulations still use the supplied CHF covariance.
+Python uses a B-spline smoother on actual failure times, rather than R's
+`mgcv` smoother on grid indices. Their smoothed bands are not numerically
+interchangeable.
 
 ```python
 from rlt import get_surv_band
@@ -164,4 +178,6 @@ SurvBand_prop = get_surv_band(
 )
 ```
 
-You can increase `nsim` for stability at the cost of runtime.
+Increasing `nsim` improves Monte Carlo precision for the simulated
+critical value at the cost of runtime. The plotted simulation does not
+establish the method's coverage.

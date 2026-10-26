@@ -14,7 +14,7 @@ _SIG_CODES = ("***", "**", "*")
 
 
 def _sig_code(z):
-    if z is None or not np.isfinite(z):
+    if z is None or np.isnan(z):
         return ""
     az = abs(z)
     for br, code in zip(_SIG_BREAKS, _SIG_CODES):

@@ -2,8 +2,8 @@
 
 This page helps you install the `rlt` package and points you to the modeling
 tutorials. It is the Python equivalent of the R package's "Get Started"
-vignette — adapted for `pip`, virtual environments, and the platforms the
-C++ core supports.
+vignette, adapted for `pip` and the platforms the C++ core supports.
+Use a shared user-wide or machine-wide Python installation.
 
 ## Install the rlt package
 

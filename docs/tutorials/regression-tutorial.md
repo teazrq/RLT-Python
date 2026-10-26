@@ -49,6 +49,8 @@ testX, testY = X[trainn:], y[trainn:]
 
 ## Fit
 
+Declare the last five columns in `categorical_features` to use categorical splits.
+
 ```python
 from rlt import RLT_reg
 
@@ -69,6 +71,7 @@ fit = RLT_reg(
     resample_replace=samplereplace,
     nsplit=nsplit,
     importance=importance,
+    categorical_features=range(p // 2, p),
     n_jobs=1,
     random_state=1,
 )
@@ -81,25 +84,28 @@ fit.fit(trainX, trainY)
 pred = fit.predict(testX)
 
 # OOB (out-of-bag) predictions and error are computed during the fit
-train_pred = fit.oob_prediction_
+oob_pred = fit.oob_prediction_
 test_pred = pred
 ```
 
 ## Evaluate
 
 ```python
-mse_train = float(np.mean((train_pred - trainY) ** 2))
+mse_oob = float(np.mean((oob_pred - trainY) ** 2))
 mse_test = float(np.mean((test_pred - testY) ** 2))
 
 # A compact summary
-print(f"Train MSE: {mse_train:.4f}")
+print(f"OOB MSE:  {mse_oob:.4f}")
 print(f"Test MSE:  {mse_test:.4f}")
 ```
 
 ```
-Train MSE: 2.3501
-Test MSE:  4.3141
+OOB MSE:  2.4167
+Test MSE:  4.6647
 ```
+
+Each OOB prediction uses only trees that omitted that training observation.
+The test MSE evaluates the separate held-out observations.
 
 ## Inspect
 
@@ -108,8 +114,8 @@ print(fit)
 ```
 
 ```
-RLT_reg(importance='permute', mtry=5, n_estimators=200, n_jobs=1,
-        random_state=1, resample_prob=0.8)
+RLT_reg(categorical_features=range(5, 10), importance='permute', mtry=5,
+        n_estimators=200, n_jobs=1, random_state=1, resample_prob=0.8)
 ```
 
 Fitted attributes worth knowing:

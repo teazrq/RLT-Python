@@ -147,8 +147,10 @@ double cla_uni_cont_score_rank_sub_w(uvec& indices,
     Right_w += obs_weight(subj);
   }
   
-  return accu( square(LeftSum) ) / Left_w + 
-         accu( square(RightSum) ) / Right_w;
+  if (Left_w > 0 && Right_w > 0)
+    return accu( square(LeftSum) ) / Left_w +
+           accu( square(RightSum) ) / Right_w;
+  return -1;
 }
 
 
@@ -331,8 +333,8 @@ void cla_uni_cont_score_best_sub_w(uvec& indices,
       Right_w -= obs_weight(subj);
     }
     
-    score = accu( square(LeftSum) ) / Left_w + 
-            accu( square(RightSum) ) / Right_w;
+    score = (Left_w > 0 && Right_w > 0) ?
+      accu( square(LeftSum) ) / Left_w + accu( square(RightSum) ) / Right_w : -1;
     
     if (score > temp_score)
     {

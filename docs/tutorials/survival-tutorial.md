@@ -130,14 +130,16 @@ plt.show()
 
 `rlt` provides three splitting criteria for survival trees:
 
-| Rule | Description | Best for |
-|------|-------------|----------|
-| `logrank` | Standard log-rank test statistic (default) | General use, clear hazard differences |
-| `suplogrank` | Supremum (maximum) of the standardized log-rank process over time | Non-proportional hazards, time-varying effects |
-| `coxgrad` | Gradient of Cox partial likelihood | When a Cox-like direction is plausible; supports observation weights |
+| Rule | How it scores a split |
+|------|----------------------|
+| `logrank` | Standard log-rank test statistic (default) |
+| `suplogrank` | Maximum of the standardized log-rank process over time |
+| `coxgrad` | Gradient of Cox partial likelihood; supports observation weights |
 
 Fit the three rules on the same data and compare out-of-bag error
-estimates:
+estimates. The error is `1 - C`, using a risk score that sums the OOB
+cumulative hazards over the full failure-time grid. Lower values are
+better; this sum is not a time integral.
 
 ```python
 fit_lr = RLT_surv(n_estimators=100, split_rule="logrank",
@@ -160,10 +162,9 @@ suplogrank:  0.35366
 coxgrad:     0.40004
 ```
 
-In practice, `logrank` is a safe default. `suplogrank` can be advantageous
-when hazard ratios change over time. `coxgrad` is useful when you want to
-incorporate observation weights (see below) or when the data follow a
-Cox-like structure.
+These values describe this simulated dataset and do not establish a
+general ranking of the split rules. `logrank` is the default; use
+`coxgrad` when supplying observation weights as below.
 
 ## Observation weights
 

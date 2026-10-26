@@ -8,7 +8,7 @@ backend. Figures are saved to build/verify_figs/. Captured stdout is
 written to build/verify_stdout.txt for cross-checking expected-output
 blocks in the docs.
 
-Usage: .venv/bin/python tools/verify_examples.py [page_rel_path ...]
+Usage: python tools/verify_examples.py [page_rel_path ...]
 Exit 1 on any failure.
 """
 import os

@@ -186,11 +186,10 @@ def test_jack_classification_predict_returns_variance_matrix(d_cla):
 # --- Error handling -------------------------------------------------------------
 
 def test_var_est_without_var_mode(d_reg):
-    # R: expect_error(predict(fit, d$X, var.est = TRUE)). API gap: Python
-    # does not raise; predict_var degrades to all-NaN variance instead.
+    # Match R: uncertainty needs compatible fitted sampling or tracking.
     fit = RLT_reg(n_estimators=30, n_jobs=2, random_state=1).fit(d_reg["X"], d_reg["y"])
-    _, var = fit.predict_var(d_reg["X"])
-    assert bool(np.isnan(var).all())
+    with pytest.raises(ValueError, match="variance mode"):
+        fit.predict_var(d_reg["X"])
 
 
 def test_ij_forest_predict_uses_stored_var_mode(d_reg):

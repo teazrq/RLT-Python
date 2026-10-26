@@ -46,6 +46,8 @@ testX, testY = X[trainn:], y[trainn:]
 
 ## Fit a classification model
 
+Declare the last five columns in `categorical_features` to use categorical splits.
+
 ```python
 from rlt import RLT_cla
 
@@ -66,6 +68,7 @@ fit = RLT_cla(
     resample_replace=samplereplace,
     nsplit=nsplit,
     importance=importance,
+    categorical_features=range(p // 2, p),
     n_jobs=1,
     random_state=1,
 )
@@ -81,25 +84,28 @@ labels = fit.predict(testX)
 # Class-membership probabilities, shape (n, n_classes)
 proba = fit.predict_proba(testX)
 
-# OOB class labels and error from the fit
-train_pred = fit.oob_class_
+# Decode the OOB class codes using the training label dictionary
+oob_labels = fit.classes_[fit.oob_class_]
 ```
 
 ## Evaluate
 
 ```python
-acc_train = float(np.mean(train_pred == trainY))
+acc_oob = float(np.mean(oob_labels == trainY))
 acc_test = float(np.mean(labels == testY))
 
 # A compact summary
-print(f"Train accuracy: {acc_train:.4f}")
+print(f"OOB accuracy:  {acc_oob:.4f}")
 print(f"Test accuracy:  {acc_test:.4f}")
 ```
 
 ```
-Train accuracy: 0.7875
+OOB accuracy:  0.8000
 Test accuracy:  0.7500
 ```
+
+Each OOB class prediction uses only trees that omitted that training observation.
+Test accuracy evaluates the separate held-out observations.
 
 ## Inspect the fitted object
 
@@ -108,8 +114,8 @@ print(fit)
 ```
 
 ```
-RLT_cla(importance='permute', mtry=5, n_estimators=200, n_jobs=1,
-        random_state=1, resample_prob=0.8)
+RLT_cla(categorical_features=range(5, 10), importance='permute', mtry=5,
+        n_estimators=200, n_jobs=1, random_state=1, resample_prob=0.8)
 ```
 
 Fitted attributes worth knowing:
@@ -124,14 +130,15 @@ fit.feature_importances_  # (p,) variable importance
 ```
 
 With the data above: `fit.classes_` is `array([0, 1])`, `fit.n_features_in_`
-is `10`, and `fit.oob_error_` is `0.2125`.
+is `10`, and `fit.oob_error_` is `0.2000`.
 
 String labels work too — `RLT_cla` stores `classes_` and `predict` returns
 the original label type:
 
 ```python
 y_str = np.array(["neg", "pos"])[y]
-fit2 = RLT_cla(n_estimators=200, random_state=1)
+fit2 = RLT_cla(n_estimators=200, random_state=1,
+               categorical_features=range(p // 2, p))
 fit2.fit(X, y_str)
 fit2.classes_        # array(['neg', 'pos'], dtype='<U3')
 fit2.predict(X[:3])  # e.g. array(['pos', 'neg', 'neg'], dtype='<U3')
@@ -149,6 +156,7 @@ their variance:
 fit_v = RLT_cla(
     n_estimators=500,
     var_mode="matched",
+    categorical_features=range(p // 2, p),
     n_jobs=1,
     random_state=1,
 )
@@ -165,9 +173,9 @@ np.round(variances[:3], 5)
 ```
 
 ```
-array([[0.0085 , 0.0085 ],
-       [0.0229 , 0.0229 ],
-       [0.00414, 0.00414]])
+array([[0.00848, 0.00848],
+       [0.01075, 0.01075],
+       [0.00958, 0.00958]])
 ```
 
 With two classes the two variance columns are identical (the second

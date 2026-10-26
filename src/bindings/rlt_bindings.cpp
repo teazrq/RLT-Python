@@ -12,6 +12,7 @@
 #include "RLT.h"
 
 #include <vector>
+#include <limits>
 
 namespace py = pybind11;
 using namespace arma;
@@ -23,6 +24,7 @@ using namespace arma;
 template <typename Y_INT>
 static double cindex_impl(const Y_INT& Y, const arma::uvec& Censor,
                           const arma::vec& pred) {
+  if (!pred.is_finite()) return arma::datum::nan;
   size_t P = 0;
   double C = 0;
   for (size_t i = 0; i < Y.n_elem; i++) {
@@ -773,16 +775,16 @@ static py::dict SurvUniCombForestPred(const py::list& splitvar,
         }
 
         mat pred_i_survival_full = cumprod(1 - pred_i_hazard_full, 1);
-
+        mat pred_i_chf_full = cumsum(pred_i_hazard_full, 1);
         mat pred_i_hazard_reduced = pred_i_hazard_full.cols(mapping);
+        mat pred_i_survival_reduced = pred_i_survival_full.cols(mapping);
+        mat pred_i_for_var = pred_i_chf_full.cols(mapping);
 
         Hazard.row(i) = mean(pred_i_hazard_reduced, 0);
-        CHazard.row(i) = cumsum(Hazard.row(i));
-        Surv.row(i) = exp(-CHazard.row(i));
+        CHazard.row(i) = mean(pred_i_for_var, 0);
+        Surv.row(i) = mean(pred_i_survival_reduced, 0);
 
         if (VarEst) {
-          mat pred_i_for_var = cumsum(pred_i_hazard_reduced, 1);
-
           if (var_mode == 1) {
             size_t B = ntrees / 2;
             mat Diff =
@@ -1324,18 +1326,15 @@ static py::dict SurvUniForestPred(const py::list& splitvar,
           pred_i_hazard_full.row(nt) = H_full.subvec(1, NFail).t();
         }
 
-        mat pred_i_survival_full = cumprod(1 - pred_i_hazard_full, 1);
-
+        mat pred_i_chf_full = cumsum(pred_i_hazard_full, 1);
         mat pred_i_hazard_reduced = pred_i_hazard_full.cols(mapping);
-        mat pred_i_survival_reduced = pred_i_survival_full.cols(mapping);
+        mat pred_i_for_var = pred_i_chf_full.cols(mapping);
 
         Hazard.row(i) = mean(pred_i_hazard_reduced, 0);
-        CHazard.row(i) = cumsum(Hazard.row(i));
+        CHazard.row(i) = mean(pred_i_for_var, 0);
         Surv.row(i) = exp(-CHazard.row(i));
 
         if (VarEst) {
-          mat pred_i_for_var = cumsum(pred_i_hazard_reduced, 1);
-
           if (var_mode == 1) {
             size_t B = ntrees / 2;
             mat Diff =
@@ -1710,7 +1709,7 @@ static py::dict Kernel_Self_OOB(const py::list& splitvar,
     for (size_t nt = 0; nt < ntrees; nt++) {
       uvec oob_idx = find(ObsTrack.col(nt) == 0);
       size_t n_oob = oob_idx.n_elem;
-      if (n_oob < 2) continue;
+      if (n_oob == 0) continue;
 
       Nmat.submat(oob_idx, oob_idx) += 1;
 
@@ -1771,7 +1770,7 @@ static py::dict Kernel_Self_OOB_Comb(const py::list& splitvar,
     for (size_t nt = 0; nt < ntrees; nt++) {
       uvec oob_idx = find(ObsTrack.col(nt) == 0);
       size_t n_oob = oob_idx.n_elem;
-      if (n_oob < 2) continue;
+      if (n_oob == 0) continue;
 
       Nmat.submat(oob_idx, oob_idx) += 1;
 
@@ -1818,22 +1817,43 @@ static py::array_t<double> mc_band_np(const dmat_t& mar_sd,
   arma::vec sd = np2vec(mar_sd);
   arma::mat Sigma = np2mat(S);
   arma::vec a = np2vec(alpha);
-
-  arma::mat L = chol(Sigma, "lower");
   size_t d = sd.n_elem;
+  if (d == 0 || !sd.is_finite() || arma::any(sd <= 0))
+    throw std::invalid_argument("mar_sd must contain finite positive values");
+  if (Sigma.n_rows != d || Sigma.n_cols != d || !Sigma.is_finite())
+    throw std::invalid_argument("S must be a finite square covariance matching mar_sd");
+  if (nsim == 0)
+    throw std::invalid_argument("nsim must be positive");
+  if (a.is_empty() || !a.is_finite() || arma::any(a < 0) || arma::any(a > 0.5))
+    throw std::invalid_argument("alpha must contain finite levels in [0, 0.5]");
+
+  const double tolerance = 100.0 * std::numeric_limits<double>::epsilon() *
+      std::max(1.0, arma::abs(Sigma).max()) * d;
+  if (arma::norm(Sigma - Sigma.t(), "inf") > tolerance)
+    throw std::invalid_argument("S must be symmetric");
+  Sigma = (Sigma + Sigma.t()) / 2;
+  arma::mat L;
+  if (!arma::chol(L, Sigma, "lower")) {
+    arma::vec vals;
+    arma::mat vecs;
+    if (!arma::eig_sym(vals, vecs, Sigma) || vals.min() < -tolerance)
+      throw std::invalid_argument("S must be positive semidefinite");
+    vals.elem(arma::find(vals < 0)).zeros();
+    L = vecs * arma::diagmat(arma::sqrt(vals));
+  }
 
   rlt::xoshiro256plus rng(seed);
-
-  arma::mat X(d, nsim, fill::zeros);
+  constexpr double pi = 3.141592653589793238462643383279502884;
+  arma::mat Z(d, nsim);
   for (size_t s = 0; s < nsim; s++) {
     for (size_t i = 0; i < d; i++) {
       // Box-Muller from the deterministic xoshiro stream
-      double u1 = rng.uniform01();
+      double u1 = std::max(rng.uniform01(), std::numeric_limits<double>::min());
       double u2 = rng.uniform01();
-      double z = std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * M_PI * u2);
-      for (size_t j = i; j < d; j++) X(j, s) += L(j, i) * z;
+      Z(i, s) = std::sqrt(-2.0 * std::log(u1)) * std::cos(2.0 * pi * u2);
     }
   }
+  arma::mat X = L * Z;
   X.each_col() /= sd;
 
   arma::vec cutoffs = max(abs(X), 0).t();

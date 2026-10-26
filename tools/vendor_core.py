@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Vendor the RLT C++ core into src/cpp/, stripping R/Rcpp dependencies.
 
-Idempotent: always rebuilds src/cpp/ from the pristine R package source.
+Idempotent: writes only changed files from an explicit R package source.
+An optional destination allows reviewing generated files before updating src/cpp/.
 Excluded (by design):
   - quantile/   : out of scope for rlt-python
-  - r-interface/: replaced by the pybind11 layer
+  - r-interface/: replaced by the pybind11 layer, except core c-index helpers
   - kernels/    : deferred to the kernel milestone (Rcpp-typed signatures)
   - RLT_init.cpp, Makevars*: R build machinery
 
@@ -16,12 +17,11 @@ Transformations:
   - PARAM_READ_R(Rcpp List)     -> PARAM_READ(rlt::CoreParams const&)
   - RLTcout macro               -> std::cout
 """
+import argparse
 import re
-import shutil
 import sys
 from pathlib import Path
 
-SRC = Path("/home/tez/RLT/src")
 DST = Path(__file__).resolve().parents[1] / "src" / "cpp"
 
 EXCLUDE_DIRS = {"quantile", "r-interface", "kernels", "include/quantile"}
@@ -207,76 +207,6 @@ inline void Rprintf(const char* fmt, ...) {
 #endif  // RLT_COMPAT_H
 '''
 
-PARAM_APPEND_STAT = r'''
-
-// ---- c-index implementations (ported from r-interface/cindex.cpp;
-// ---- the core survival code calls these, so they must live in the core)
-
-double cindex_d(arma::vec& Y, arma::uvec& Censor, arma::vec& pred) {
-  size_t P = 0;
-  double C = 0;
-  for (size_t i = 0; i < Y.n_elem; i++) {
-    for (size_t j = 0; j < i; j++) {
-      if ((Y(i) > Y(j) and Censor(j) == 0) or
-          (Y(i) < Y(j) and Censor(i) == 0))
-        continue;
-      if (Y(i) == Y(j) and Censor(i) == 0 and Censor(j) == 0) continue;
-      P++;
-      if (Y(i) > Y(j)) {
-        if (pred(i) < pred(j)) C++;
-        if (pred(i) == pred(j)) C += 0.5;
-      } else if (Y(i) < Y(j)) {
-        if (pred(j) < pred(i)) C++;
-        if (pred(i) == pred(j)) C += 0.5;
-      } else {
-        if (Censor(i) == 1 and Censor(j) == 1) {
-          if (pred(i) == pred(j)) C++;
-          else C += 0.5;
-        } else if ((Censor(i) == 1 and pred(i) > pred(j)) or
-                   (Censor(j) == 1 and pred(j) > pred(i))) {
-          C++;
-        } else if (pred(i) == pred(j)) {
-          C += 0.5;
-        }
-      }
-    }
-  }
-  return C / (double)P;
-}
-
-double cindex_i(arma::uvec& Y, arma::uvec& Censor, arma::vec& pred) {
-  size_t P = 0;
-  double C = 0;
-  for (size_t i = 0; i < Y.n_elem; i++) {
-    for (size_t j = 0; j < i; j++) {
-      if ((Y(i) > Y(j) and Censor(j) == 0) or
-          (Y(i) < Y(j) and Censor(i) == 0))
-        continue;
-      if (Y(i) == Y(j) and Censor(i) == 0 and Censor(j) == 0) continue;
-      P++;
-      if (Y(i) > Y(j)) {
-        if (pred(i) < pred(j)) C++;
-        if (pred(i) == pred(j)) C += 0.5;
-      } else if (Y(i) < Y(j)) {
-        if (pred(j) < pred(i)) C++;
-        if (pred(i) == pred(j)) C += 0.5;
-      } else {
-        if (Censor(i) == 1 and Censor(j) == 1) {
-          if (pred(i) == pred(j)) C++;
-          else C += 0.5;
-        } else if ((Censor(i) == 1 and pred(i) > pred(j)) or
-                   (Censor(j) == 1 and pred(j) > pred(i))) {
-          C++;
-        } else if (pred(i) == pred(j)) {
-          C += 0.5;
-        }
-      }
-    }
-  }
-  return C / (double)P;
-}
-'''
-
 PARAM_READ_NEW = r'''  void PARAM_READ(const rlt::CoreParams& q) {
     N = q.n;                    P = q.p;
     ntrees = q.ntrees;          mtry = q.mtry;
@@ -318,6 +248,7 @@ RLT_H = r'''//    --------------------------------------------------------------
 #include "include/core/Tree_Definition.h"
 #include "include/core/Tree_Function.h"
 #include "include/core/Stat_Function.h"
+#include "include/core/Forest_Build_Guards.h"
 #include "include/core/Variance_IJ_Jack.h"
 
 // Regression
@@ -384,26 +315,22 @@ def transform(text: str, path: Path) -> str:
     #     their implementations live in the excluded r-interface layer;
     #     the pybind11 layer declares its own typed entry points.
     text = re.sub(r'\nList\s+\w+\([^;]*?\);\n', '\n', text, flags=re.S)
+    text = re.sub(r'^\s*//\s*\[\[Rcpp::export\(\)\]\]\s*\n', '', text,
+                  flags=re.M)
     # 5. RLTcout -> std::cout (defined once in Utility.h)
     text = text.replace("#define RLTcout Rcout", "#define RLTcout std::cout")
     # 6. Rcpp::as / Rf_length sites (PARAM_READ_R) — spliced below
     return text
 
 
-def main() -> int:
-    if not SRC.is_dir():
-        print(f"source not found: {SRC}", file=sys.stderr)
-        return 1
-    if DST.exists():
-        shutil.rmtree(DST)
-    DST.mkdir(parents=True)
-
-    copied, skipped = [], []
-    for p in sorted(SRC.rglob("*")):
+def generate(source: Path) -> tuple[dict[str, str], list[str]]:
+    """Transform sources in memory before writing any destination files."""
+    generated, skipped = {}, []
+    for p in sorted(source.rglob("*")):
         if not p.is_file():
             continue
-        rel = p.relative_to(SRC).as_posix()
-        if any(rel.startswith(d) or rel == d.rstrip("/") for d in EXCLUDE_DIRS):
+        rel = p.relative_to(source).as_posix()
+        if any(rel == d or rel.startswith(d + "/") for d in EXCLUDE_DIRS):
             skipped.append(rel)
             continue
         if p.name in EXCLUDE_FILES:
@@ -411,51 +338,78 @@ def main() -> int:
             continue
         if p.suffix not in {".h", ".cpp"}:
             continue
-        text = p.read_text()
-        text = transform(text, p)
-        out = DST / rel
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(text)
-        copied.append(rel)
+        generated[rel] = transform(p.read_text(encoding="utf-8"), p)
 
     # --- Utility.h specials: PARAM_READ_R splice ---
-    utility = DST / "include/core/Utility.h"
-    text = utility.read_text()
-    text = splice_method(text, "void PARAM_READ_R(List& param)", PARAM_READ_NEW)
-    utility.write_text(text)
+    utility = "include/core/Utility.h"
+    generated[utility] = splice_method(generated[utility],
+        "void PARAM_READ_R(List& param)", PARAM_READ_NEW)
+    generated["core/Stat_Function.cpp"] = generated["core/Stat_Function.cpp"].rstrip() + "\n"
 
-    # --- Stat_Function.cpp: append c-index implementations ---
-    statf = DST / "core/Stat_Function.cpp"
-    text = statf.read_text()
-    text = text.rstrip() + "\n" + PARAM_APPEND_STAT
-    statf.write_text(text)
+    # The survival core calls these helpers from the otherwise excluded
+    # R interface. Use the actual source so fixes cannot leave a stale copy.
+    cindex = source / "r-interface" / "cindex.cpp"
+    cindex_text = transform(cindex.read_text(encoding="utf-8"), cindex).rstrip()
+    generated["core/cindex.cpp"] = "\n".join(line.rstrip() for line in cindex_text.splitlines()) + "\n"
 
     # --- top-level headers ---
-    (DST / "rlt_compat.h").write_text(RLT_COMPAT)
-    (DST / "RLT.h").write_text(RLT_H)
+    generated["rlt_compat.h"] = RLT_COMPAT
+    generated["RLT.h"] = RLT_H
+    return generated, skipped
 
-    print(f"vendored {len(copied)} files -> {DST}")
-    print(f"skipped {len(skipped)} files (by design)")
 
-    # --- residual audit: anything still smelling of R/Rcpp ---
+def residual_references(generated: dict[str, str]) -> dict[str, list[str]]:
+    """Report R dependencies in code, ignoring compatibility comments."""
     bad = re.compile(r"Rcpp::|RcppExport|\bRcout\b|\bRf_|\bSEXP\b|"
                      r"RcppArmadillo|\bdqrng\b|boost::random|"
                      r"R Inside|R_inside")
     residuals = {}
-    for p in sorted(DST.rglob("*")):
-        if p.is_file() and p.suffix in {".h", ".cpp"}:
-            for n, line in enumerate(p.read_text().splitlines(), 1):
-                if bad.search(line):
-                    residuals.setdefault(p.relative_to(DST).as_posix(),
-                                        []).append(f"{n}: {line.strip()}")
+    for rel, text in generated.items():
+        code = re.sub(r'//[^\n]*|/\*.*?\*/', '', text, flags=re.S)
+        for n, line in enumerate(code.splitlines(), 1):
+            if bad.search(line):
+                residuals.setdefault(rel, []).append(f"{n}: {line.strip()}")
+    return residuals
+
+
+def write_changed(path: Path, text: str) -> bool:
+    """Keep untouched files and preserve the newline style of changed files."""
+    newline = "\n"
+    if path.exists():
+        previous = path.read_bytes()
+        if previous.decode("utf-8").replace("\r\n", "\n") == text:
+            return False
+        if b"\r\n" in previous:
+            newline = "\r\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline=newline)
+    return True
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", type=Path, help="RLT R-package src directory")
+    parser.add_argument("--dest", type=Path, default=DST,
+                        help="candidate destination (default: src/cpp)")
+    args = parser.parse_args(argv)
+    source, destination = args.source.resolve(), args.dest.resolve()
+    if not (source / "include/core/Utility.h").is_file():
+        parser.error(f"not an RLT source directory: {source}")
+    if source == destination or source in destination.parents or destination in source.parents:
+        parser.error("source and destination directories must not overlap")
+
+    generated, skipped = generate(source)
+    residuals = residual_references(generated)
     if residuals:
-        print("\n=== RESIDUAL R/Rcpp REFERENCES ===")
+        print("Residual R/Rcpp references:", file=sys.stderr)
         for f, lines in residuals.items():
-            print(f"--- {f}")
-            for ln in lines[:12]:
-                print("   ", ln)
-    else:
-        print("\nno residual R/Rcpp references — clean")
+            print(f"{f}: " + "; ".join(lines), file=sys.stderr)
+        return 1
+
+    changed = sum(write_changed(destination / rel, text)
+                  for rel, text in generated.items())
+    print(f"vendored {len(generated)} files -> {destination} ({changed} changed)")
+    print(f"skipped {len(skipped)} files (by design); no residual R/Rcpp references")
     return 0
 
 

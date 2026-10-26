@@ -1,15 +1,18 @@
-"""Survival confidence bands (port of RLT's get.surv.band).
+"""Survival confidence bands around the exponential of predicted negative CHF.
 
-Requires a variance-enabled survival prediction. Two approaches,
-mirroring the R package:
+Requires a variance-enabled survival prediction. Two approaches:
 
 - "naive": marginal SDs = sqrt(diag(Cov)); MC band with full covariance.
 - "smoothed": tensor-product penalized B-spline smoothing of the
-  covariance surface (C++ ``rlt_tp_smooth`` — the mgcv ``te(i, j)``
-  replacement), rank-k PSD truncation, positive-spectrum residual
-  correction, eigenvalue-ratio weights — the same pipeline as R.
+  covariance surface, rank-k PSD truncation, positive-spectrum residual
+  correction, and eigenvalue-ratio weights. The C++ smoother uses actual
+  failure times and is an alternative to R's index-coordinate mgcv GAM;
+  the two methods do not have identical smoothing scales.
 """
 from __future__ import annotations
+
+from numbers import Real
+import warnings
 
 import numpy as np
 
@@ -45,10 +48,27 @@ def _pos_spectrum_psd(M):
     return (Mp + Mp.T) / 2.0
 
 
+def _integer_parameter(value, name, minimum=0):
+    if (isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+            or not np.isfinite(value) or value < minimum or int(value) != value):
+        qualifier = "positive" if minimum == 1 else "nonnegative"
+        raise ValueError(f"{name} must be a finite {qualifier} integer")
+    return int(value)
+
+
 def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
                   k_rank=10, k_mode="fixed", k_prop=0.99, seed=0,
                   band_grid_size=0):
-    """Simultaneous confidence bands for survival curves.
+    """Subject-specific simultaneous bands around ``exp(-CHF)``.
+
+    The nominal simultaneous target is across the returned evaluation
+    times for each subject, not jointly across subjects or between omitted
+    times. Linear-combination forests return a mean product-limit survival
+    curve that can differ from this reference curve; these bands do not
+    directly estimate the variation of that mean product-limit estimator.
+    Both approaches simulate from the raw CHF covariance. Smoothing changes
+    only the marginal standardizing scales, using the Python B-spline
+    alternative rather than R's GAM smoother.
 
     Parameters
     ----------
@@ -64,31 +84,57 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
 
     Returns
     -------
-    dict with ``lower``, ``upper`` (n, T), ``timepoints``, per-subject
-    ``diagnostics``, and ``marsd``.
+    dict with ``lower``, ``upper`` (n, T) for scalar alpha or
+    (n, n_alpha, T) for multiple levels, ``timepoints``, per-subject
+    ``diagnostics``, and final marginal scales ``marsd`` (n, T).
     """
-    survival, cov = model.predict_var(
-        X, band_grid_size=band_grid_size)
-    chf = -np.log(np.clip(survival, 1e-12, None))
-    timepoints = model.predict(X, band_grid_size=band_grid_size)
-    # NOTE: timepoints for the grid come from the model's failure times
-    tp_grid = _band_grid(model, band_grid_size)
-
-    N = cov.shape[0]
+    if approach not in ("naive", "smoothed"):
+        raise ValueError(f"approach {approach!r} not available")
+    if k_mode not in ("fixed", "proportion"):
+        raise ValueError("k_mode must be 'fixed' or 'proportion'")
+    i = _integer_parameter(i, "i")
+    nsim = _integer_parameter(nsim, "nsim", minimum=1)
+    seed = _integer_parameter(seed, "seed")
     alphas = np.atleast_1d(np.asarray(alpha, dtype=np.float64))
+    if (alphas.ndim != 1 or alphas.size == 0 or not np.all(np.isfinite(alphas))
+            or np.any(alphas < 0) or np.any(alphas > 0.5)):
+        raise ValueError("alpha must contain finite levels in [0, 0.5]")
+    if k_mode == "proportion":
+        if (isinstance(k_prop, (bool, np.bool_)) or not isinstance(k_prop, Real)
+                or not np.isfinite(k_prop) or not 0 < k_prop <= 1):
+            raise ValueError("k_prop must be in (0, 1]")
+    elif approach == "smoothed":
+        k_rank = _integer_parameter(k_rank, "k_rank")
 
-    if np.any(alphas < 0) or np.any(alphas > 0.5):
-        raise ValueError("alpha must be in [0, 0.5]")
+    out = model._predict_raw(X, var_est=True, band_grid_size=band_grid_size)
+    tp_grid, _ = model._grid_and_mapping(band_grid_size)
+    tp_grid = np.asarray(tp_grid, dtype=np.float64)
+    if "Cov" not in out:
+        raise ValueError("prediction covariance is unavailable; fit with var_mode")
+    chf = np.asarray(out["CHF"], dtype=np.float64)
+    cov = np.asarray(out["Cov"], dtype=np.float64)
+    if (chf.ndim != 2 or cov.shape != (chf.shape[0], chf.shape[1], chf.shape[1])
+            or tp_grid.shape != (chf.shape[1],) or chf.shape[1] == 0):
+        raise ValueError("CHF, covariance, and time grid dimensions must agree")
+    if not np.all(np.isfinite(chf)) or not np.all(np.isfinite(cov)):
+        raise ValueError("CHF and covariance must contain finite values")
+    N, nt = chf.shape
 
     if i == 0:
         allid = np.arange(N)
     else:
-        allid = np.atleast_1d(np.asarray(i, dtype=int)) - 1  # 1-based
-        if np.any(allid < 0) or np.any(allid >= N):
+        if i > N:
             raise ValueError(f"observation {i} does not exist")
+        allid = [i - 1]  # 1-based
+
+    if approach == "smoothed" and nt < 3:
+        warnings.warn(
+            "Smoothing requires at least three time points; using approach = 'naive'.",
+            UserWarning, stacklevel=2)
+        approach = "naive"
 
     eps = np.finfo(float).eps
-    lowers, uppers, diags = [], [], []
+    lowers, uppers, diags, scales = [], [], [], []
 
     for idx in allid:
         Sigma_raw = np.asarray(cov[idx], dtype=np.float64)
@@ -101,27 +147,31 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
                             dtype=np.float64))
             diag_info = {"timepoint": tp_grid, "raw_sd": raw_sd,
                          "final_sd": marsd}
-            ve_info = {"var_explained": 1.0, "k_rank": None,
+            ve_info = {"var_explained": np.nan if np.trace(Sigma_raw) == 0 else 1.0,
+                       "k_rank": None,
                        "total_var": float(np.trace(Sigma_raw)),
                        "lowrank_var": float(np.trace(Sigma_raw))}
             eig_info = None
         elif approach == "smoothed":
-            if k_mode not in ("fixed", "proportion"):
-                raise ValueError("k_mode must be 'fixed' or 'proportion'")
             if k_mode == "proportion":
-                if not 0 < k_prop <= 1:
-                    raise ValueError("k_prop must be in (0, 1]")
                 vals = np.clip(
-                    np.linalg.eigvalsh(_nearest_psd(Sigma_raw)), 0, None)
+                    np.linalg.eigvalsh(_nearest_psd(Sigma_raw))[::-1], 0, None)
                 total = vals.sum()
                 if total <= eps:
                     k_used = 0
+                    cum = np.zeros_like(vals)
+                    explained = np.nan if total == 0 else 0.0
                 else:
-                    cum = np.cumsum(vals[::-1]) / total
+                    cum = np.cumsum(vals) / total
                     k_used = int(np.searchsorted(cum, k_prop) + 1)
                     k_used = min(k_used, vals.shape[0])
+                    explained = float(cum[k_used - 1])
+                eig_info = {"vals": vals, "cum_ratio": cum,
+                            "k_used": k_used, "k_prop": float(k_prop),
+                            "var_explained": explained}
             else:
-                k_used = int(k_rank)
+                k_used = min(k_rank, nt)
+                eig_info = None
 
             # C++ tensor-product penalized B-spline smoother (GCV lambda)
             Sigma_s = np.asarray(rlt_tp_smooth(
@@ -154,39 +204,24 @@ def get_surv_band(model, X, i=0, alpha=0.05, approach="naive", nsim=5000,
             ve_info = {
                 "var_explained":
                     float(np.trace(Sigma_smoothK) / np.trace(Sigma_raw))
-                    if np.trace(Sigma_raw) > 0 else 0.0,
+                    if np.trace(Sigma_raw) != 0 else np.nan,
                 "k_rank": int(k_used),
                 "total_var": float(np.trace(Sigma_raw)),
                 "lowrank_var": tr_smoothK,
                 "resid_var": float(np.trace(Sigma_raw) - tr_smoothK),
             }
-            eig_info = {"k_used": int(k_used), "k_prop": float(k_prop)}
-        else:
-            raise ValueError(f"approach {approach!r} not available")
 
         k_crit = bandk[0] if bandk.shape[0] == 1 else bandk
         lowers.append(np.exp(-chf[idx] - k_crit))
         uppers.append(np.exp(-chf[idx] + k_crit))
         diags.append({"diag_sd": diag_info, "var_explained": ve_info,
                       "eig": eig_info})
+        scales.append(marsd)
 
     return {
         "lower": np.asarray(lowers),
         "upper": np.asarray(uppers),
         "timepoints": tp_grid,
-        "marsd": None,
+        "marsd": np.asarray(scales),
         "diagnostics": diags,
     }
-
-
-def _band_grid(model, band_grid_size):
-    """Time grid actually used by predict_var for the given size."""
-    original = model.timepoints_
-    nfail = original.shape[0]
-    bgs = int(band_grid_size or 0)
-    if bgs > 0 and bgs < nfail:
-        probs = np.linspace(0.05, 1.0, min(bgs, nfail))
-        grid = np.unique(
-            np.quantile(original, probs, method="nearest"))
-        return np.sort(grid).astype(np.float64)
-    return np.asarray(original, dtype=np.float64)

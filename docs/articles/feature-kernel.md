@@ -175,9 +175,10 @@ print(N[0, 1], C[0, 1])   # 48 1
 print(np.trace(K))        # 120.0 — diagonal is 1 wherever N > 0
 ```
 
-Use `N` and `C` (integer counts) directly for unbiased DoF-style
-estimators; the normalized `Kernel` is convenient for similarity-based
-weighting.
+Use `N` to distinguish an unsupported pair (`N = 0`) from an observed
+zero leaf-sharing count. These matrices describe the fitted forest;
+using them in a degrees-of-freedom estimator requires that estimator's
+own assumptions.
 
 ## Example 4 - Linear-combination (SIR, no embedded model)
 
@@ -214,7 +215,7 @@ print(f"Training MSE: {np.mean((pred - y) ** 2):.4f}")
 ```
 
 ```
-Training MSE: 0.9685
+Training MSE: 0.9073
 ```
 
 ```python

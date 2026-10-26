@@ -11,7 +11,8 @@ import warnings
 import numpy as np
 from sklearn.base import BaseEstimator, ClassifierMixin, RegressorMixin
 from sklearn.utils import check_random_state
-from sklearn.utils.validation import check_is_fitted
+from sklearn.utils.multiclass import check_classification_targets
+from sklearn.utils.validation import check_is_fitted, column_or_1d
 
 from . import _params
 from .bands import get_surv_band
@@ -51,6 +52,8 @@ def _validate_surv_y(y):
         if {"event", "time"}.issubset(names):
             event = np.asarray(y["event"]).astype(np.float64).ravel()
             time = np.asarray(y["time"], dtype=np.float64).ravel()
+            if time.size != event.size:
+                raise ValueError("survival time and event have inconsistent lengths")
             return time, event
         raise ValueError(
             "survival y must be a structured array with fields 'event' "
@@ -59,6 +62,8 @@ def _validate_surv_y(y):
     if isinstance(y, (tuple, list)) and len(y) == 2:
         time = np.asarray(y[0], dtype=np.float64).ravel()
         event = np.asarray(y[1], dtype=np.float64).ravel()
+        if time.size != event.size:
+            raise ValueError("survival time and event have inconsistent lengths")
         return time, event
     raise ValueError(
         "survival y must be a structured array with fields 'event'/'time' "
@@ -69,12 +74,37 @@ def _validate_surv_y(y):
 class _BaseRLT(BaseEstimator):
     """Shared machinery for RLT estimators."""
 
-    def _check_X(self, X):
-        X = np.asarray(X, dtype=np.float64)
+    def _check_X(self, X, *, reset=False):
+        names = getattr(X, "columns", None)
+        names = None if names is None else np.asarray([str(c) for c in names], dtype=object)
+        X = np.asarray(X)
         if X.ndim == 1:
             X = X.reshape(-1, 1)
+        if X.ndim != 2 or not all(X.shape):
+            raise ValueError("X must be a nonempty two-dimensional array")
+        if not reset and hasattr(self, "n_features_in_"):
+            p = self.n_features_in_
+            fitted_names = getattr(self, "feature_names_in_", None)
+            if names is not None and fitted_names is not None:
+                if not np.array_equal(names, fitted_names):
+                    matching = [name for name in names if name in fitted_names]
+                    if len(set(fitted_names)) != p or len(set(matching)) != len(matching):
+                        raise ValueError("X has ambiguous duplicate feature names; supply the original training order")
+                    if any(name not in names for name in fitted_names):
+                        raise ValueError("X is missing features from the training data")
+                    order = [list(names).index(name) for name in fitted_names]
+                    warnings.warn("X feature names do not match training data; matching by name", UserWarning, stacklevel=3)
+                    X = X[:, order]
+            if X.shape[1] != p:
+                raise ValueError(f"X has {X.shape[1]} features; expected {p} from training")
+        X = np.asarray(X, dtype=np.float64)
         if not np.all(np.isfinite(X)):
             raise ValueError("X contains NA/Inf")
+        if not reset and hasattr(self, "n_features_in_"):
+            for j in self._cat_shift_cols_:
+                col = X[:, j]
+                if np.any(col != np.floor(col)) or np.any(col < 0) or np.any(col >= self.ncat_[j]):
+                    raise ValueError(f"categorical column {j} must contain integer training codes in [0, {self.ncat_[j]})")
         return X
 
     def _resolve_seed(self):
@@ -87,14 +117,17 @@ class _BaseRLT(BaseEstimator):
             return int(np.random.default_rng().integers(0, 2**31 - 1))
         if isinstance(rs, (int, np.integer)):
             return int(rs)
-        # RandomState / Generator instances: draw one seed
+        if isinstance(rs, np.random.Generator):
+            return int(rs.integers(0, 2**31 - 1))
+        # RandomState instances: draw one seed
         return int(check_random_state(rs).randint(0, 2**31 - 1))
 
-    def _shift_categorical(self, X):
+    def _shift_categorical(self, X, cols=None):
         """Shift declared categorical columns to the core's 1-based level
         codes (R's data.matrix convention: codes 1..k; category 0 is a
         phantom that never occurs)."""
-        cols = getattr(self, "_cat_shift_cols_", None)
+        if cols is None:
+            cols = getattr(self, "_cat_shift_cols_", None)
         if not cols:
             return X
         X = X.copy()
@@ -103,7 +136,9 @@ class _BaseRLT(BaseEstimator):
         return X
 
     def _prepare_fit_inputs(self, X):
-        X = self._check_X(X)
+        names = getattr(X, "columns", None)
+        names = None if names is None else np.asarray([str(c) for c in names], dtype=object)
+        X = self._check_X(X, reset=True)
         n, p = X.shape
         ncat = np.ones(p, dtype=np.int64)  # RLT convention: 1 = continuous
         cf = getattr(self, "categorical_features", None)
@@ -117,13 +152,15 @@ class _BaseRLT(BaseEstimator):
                 "(strings are not supported; use integer indices)")
         else:
             mask = np.asarray(cf)
+            if mask.ndim != 1:
+                raise ValueError("categorical_features must be a one-dimensional mask or index array")
             if mask.dtype == bool:
                 if mask.shape[0] != p:
                     raise ValueError(
                         f"categorical_features boolean mask must have length "
                         f"n_features={p}, got {mask.shape[0]}")
                 declared = mask.astype(bool)
-            elif np.issubdtype(mask.dtype, np.integer):
+            elif not mask.size or np.issubdtype(mask.dtype, np.integer):
                 idx = np.unique(np.asarray(cf, dtype=np.int64).ravel())
                 if idx.size and (idx.min() < 0 or idx.max() >= p):
                     raise ValueError(
@@ -140,7 +177,7 @@ class _BaseRLT(BaseEstimator):
                 if not np.all(np.isfinite(col)):
                     raise ValueError(
                         f"categorical column {j} contains NA/Inf")
-                if not np.all(col == np.floor(col)):
+                if np.any(col < 0) or not np.all(col == np.floor(col)):
                     raise ValueError(
                         f"categorical column {j} must contain non-negative "
                         f"integer level codes (0, 1, ..., k-1)")
@@ -156,15 +193,19 @@ class _BaseRLT(BaseEstimator):
                     f"categorical, pass categorical_features to treat it "
                     f"as such.", UserWarning, stacklevel=3)
         # core expects R-style 1-based codes; the public API is 0-based
-        self._cat_shift_cols_ = [j for j in range(p) if declared[j]]
-        if hasattr(X, "columns"):
-            try:
-                names = [str(c) for c in X.columns]
-                if len(names) == p:
-                    self.feature_names_in_ = np.asarray(names, dtype=object)
-            except Exception:
-                pass
-        return X, ncat, n, p
+        cat_cols = [j for j in range(p) if declared[j]]
+        return X, ncat, n, p, names, cat_cols
+
+    def _replace_fit_metadata(self, names, cat_cols):
+        """Install new metadata only after native fitting has succeeded."""
+        for name in ("varimp_", "var_vi_", "obstrack_", "oob_prediction_",
+                     "oob_class_", "oob_prob_", "oob_hazard_", "oob_error_"):
+            self.__dict__.pop(name, None)
+        self._cat_shift_cols_ = cat_cols
+        if names is None:
+            self.__dict__.pop("feature_names_in_", None)
+        else:
+            self.feature_names_in_ = names
 
     def _resolve_lc_method(self, codes, valid_names, valid_codes, model_label,
                            reset_name):
@@ -233,9 +274,15 @@ class _BaseRLT(BaseEstimator):
     def _resolve_var_mode(self, var_est, var_mode):
         if not var_est:
             return 0
-        if var_mode is None:
-            return int(getattr(self.params_, "var_mode", 0))
-        return int(_params._encode(var_mode, _params._VAR_MODE_CODES, "var_mode"))
+        fitted = int(self.params_.var_mode)
+        mode = fitted if var_mode is None else _params._encode(var_mode, _params._VAR_MODE_CODES, "var_mode")
+        if mode == 0:
+            raise ValueError("predict_var requires a fitted variance mode or an explicit compatible var_mode")
+        if mode == 1 and fitted != 1:
+            raise ValueError("matched variance requires fitting with var_mode='matched'")
+        if mode in (2, 3) and not hasattr(self, "obstrack_"):
+            raise ValueError("IJ/jack variance requires resample tracking at fit time")
+        return int(mode)
 
     def _obstrack_or_empty(self):
         return getattr(self, "obstrack_", self._empty_obstrack())
@@ -255,22 +302,7 @@ class _BaseRLT(BaseEstimator):
 
     def _core_params(self, n, p):
         cp = _params.build_core_params(self, n, p, self._resolve_seed())
-        # embed_protect: R default is ceiling(log(n)); must be >= 1 or the
-        # core's var-protect subvec underflows (protect_valid == 0)
-        if self.embed_protect is None:
-            cp.embed_protect = max(1, int(np.ceil(np.log(max(n, 2)))))
-        else:
-            cp.embed_protect = int(self.embed_protect)
-        rp = self.resample_prob
-        if rp is None:
-            rp = 1.0 if self.resample_replace else 0.8
-        cp.resample_prob = float(rp)
-        imp = _params._encode(self.importance, _params._IMPORTANCE_CODES,
-                              "importance")
-        cp.importance = 0 if imp is None else int(imp)
-        vm = _params._encode(self.var_mode, _params._VAR_MODE_CODES, "var_mode")
-        vm = 0 if vm is None else int(vm)
-        cp.var_mode = vm
+        vm = cp.var_mode
         if vm == 1:
             # matched U-statistic preset (mirrors RLT.r): subsample without
             # replacement, prob 0.5, even tree count, distribute importance
@@ -288,12 +320,11 @@ class _BaseRLT(BaseEstimator):
             cp.replacement = True
             if cp.importance == 0:
                 cp.importance = 2
-        cp.obs_track = bool(self.resample_track) or vm > 0
         return cp
 
     def _matched_obstrack(self, cp, n):
         k = int(n * cp.resample_prob)
-        return gen_ms_obs_track_mat(n, k, cp.ntrees, cp.seed)
+        return gen_ms_obs_track_mat(n, k, cp.ntrees, cp.seed + 1)
 
     def get_one_tree(self, tree_id):
         """Return the raw arrays of one fitted tree (0-indexed)."""
@@ -363,6 +394,8 @@ class _BaseRLT(BaseEstimator):
         if not hasattr(self, "obstrack_"):
             raise ValueError(
                 "vs_train=True requires resample_track=True at fit time")
+        if X2.shape[0] != self.obstrack_.shape[0]:
+            raise ValueError("vs_train=True requires X2 to be the original training data")
         fn = _core.Kernel_Train_Comb if comb else _core.Kernel_Train
         return fn(*prefix(), X1, X2, self.ncat_, self.obstrack_, 0)
 
@@ -376,7 +409,7 @@ class _BaseRLT(BaseEstimator):
 # regression
 # ----------------------------------------------------------------------------
 
-class RLT_reg(_BaseRLT, RegressorMixin):
+class RLT_reg(RegressorMixin, _BaseRLT):
     """Reinforcement Learning Trees regression forest.
 
     Parameters
@@ -386,7 +419,8 @@ class RLT_reg(_BaseRLT, RegressorMixin):
     mtry : int or None, default=None
         Variables considered per split (None -> max(1, p // 2)).
     min_samples_leaf : int, default=5
-        Minimum terminal node size (RLT ``nmin``).
+        Node-size stopping threshold (RLT ``nmin``), not a guaranteed
+        minimum number of observations in every terminal node.
     nsplit : int, default=0
         Random cut points per variable (0 = consider all; best split).
     resample_replace : bool, default=True
@@ -475,7 +509,7 @@ class RLT_reg(_BaseRLT, RegressorMixin):
         self.random_state = random_state
 
     def fit(self, X, y, sample_weight=None, var_prob=None):
-        X, ncat, n, p = self._prepare_fit_inputs(X)
+        X, ncat, n, p, names, cat_cols = self._prepare_fit_inputs(X)
         y = np.asarray(y, dtype=np.float64).ravel()
         if y.shape[0] != n:
             raise ValueError("X and y have inconsistent lengths")
@@ -486,7 +520,7 @@ class RLT_reg(_BaseRLT, RegressorMixin):
         cp.use_obs_w = sample_weight is not None
         cp.use_var_prob = var_prob is not None
 
-        if self.linear_comb == 1:
+        if cp.linear_comb == 1:
             cp.split_rule = 1
             cp.linear_comb_method = 1
         else:
@@ -494,7 +528,6 @@ class RLT_reg(_BaseRLT, RegressorMixin):
                 _LC_METHOD_REG, "'naive', 'lm', 'pca', or 'sir'", {1, 2, 3, 4},
                 "regression", "naive")
             cp.split_rule = 1
-        cp.reinforcement = bool(self.reinforcement) or int(self.linear_comb) > 1
 
         obsw = (_params.check_obs_weight(sample_weight, n)
                 if sample_weight is not None else np.full(n, 1.0 / n))
@@ -505,12 +538,13 @@ class RLT_reg(_BaseRLT, RegressorMixin):
                     else self._empty_obstrack())
 
         if cp.linear_comb > 1:
-            out = RegUniCombForestFit(self._shift_categorical(X), y, ncat,
+            out = RegUniCombForestFit(self._shift_categorical(X, cat_cols), y, ncat,
                                       obsw, varp, obstrack, cp)
         else:
-            out = RegUniForestFit(self._shift_categorical(X), y, ncat, obsw,
+            out = RegUniForestFit(self._shift_categorical(X, cat_cols), y, ncat, obsw,
                                   varp, obstrack, cp)
 
+        self._replace_fit_metadata(names, cat_cols)
         self.forest_ = out["FittedForest"]
         self.n_features_in_ = p
         self.ncat_ = ncat
@@ -568,7 +602,7 @@ class RLT_reg(_BaseRLT, RegressorMixin):
 # classification
 # ----------------------------------------------------------------------------
 
-class RLT_cla(_BaseRLT, ClassifierMixin):
+class RLT_cla(ClassifierMixin, _BaseRLT):
     """Reinforcement Learning Trees classification forest.
 
     Parameters mirror :class:`RLT_reg`; classification-specific:
@@ -636,23 +670,29 @@ class RLT_cla(_BaseRLT, ClassifierMixin):
         self.random_state = random_state
 
     def fit(self, X, y, sample_weight=None, var_prob=None):
-        X, ncat, n, p = self._prepare_fit_inputs(X)
-        y_raw = np.asarray(y)
+        X, ncat, n, p, names, cat_cols = self._prepare_fit_inputs(X)
+        y_raw = column_or_1d(y, warn=True)
         if y_raw.shape[0] != n:
             raise ValueError("X and y have inconsistent lengths")
+        if y_raw.dtype.kind in "fc" and not np.all(np.isfinite(y_raw)):
+            raise ValueError("y contains NA/Inf")
+        try:
+            check_classification_targets(y_raw)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid classification labels: {exc}") from exc
 
-        self.classes_ = np.unique(y_raw)
-        if self.classes_.shape[0] < 2:
+        classes = np.unique(y_raw)
+        if classes.shape[0] < 2:
             raise ValueError("y must have at least 2 distinct classes")
-        table = {c: i for i, c in enumerate(self.classes_)}
+        table = {c: i for i, c in enumerate(classes)}
         y_int = np.asarray([table[v] for v in y_raw], dtype=np.int64)
-        nclass = int(self.classes_.shape[0])
+        nclass = int(classes.shape[0])
 
         cp = self._core_params(n, p)
         cp.use_obs_w = sample_weight is not None
         cp.use_var_prob = var_prob is not None
 
-        if self.linear_comb == 1:
+        if cp.linear_comb == 1:
             cp.split_rule = 1
             cp.linear_comb_method = 1
         else:
@@ -660,7 +700,6 @@ class RLT_cla(_BaseRLT, ClassifierMixin):
                 _LC_METHOD_CLA, "'lda', 'naive', 'random', or 'logistic'",
                 {1, 2, 3, 4}, "classification", "lda")
             cp.split_rule = 1
-        cp.reinforcement = bool(self.reinforcement) or int(self.linear_comb) > 1
 
         obsw = (_params.check_obs_weight(sample_weight, n)
                 if sample_weight is not None else np.full(n, 1.0 / n))
@@ -671,12 +710,14 @@ class RLT_cla(_BaseRLT, ClassifierMixin):
                     else self._empty_obstrack())
 
         if cp.linear_comb > 1:
-            out = ClaUniCombForestFit(self._shift_categorical(X), y_int, ncat,
+            out = ClaUniCombForestFit(self._shift_categorical(X, cat_cols), y_int, ncat,
                                       nclass, obsw, varp, obstrack, cp)
         else:
-            out = ClaUniForestFit(self._shift_categorical(X), y_int, ncat,
+            out = ClaUniForestFit(self._shift_categorical(X, cat_cols), y_int, ncat,
                                   nclass, obsw, varp, obstrack, cp)
 
+        self._replace_fit_metadata(names, cat_cols)
+        self.classes_ = classes
         self.forest_ = out["FittedForest"]
         self.n_features_in_ = p
         self.ncat_ = ncat
@@ -824,9 +865,9 @@ class RLT_surv(_BaseRLT):
         self.random_state = random_state
 
     def fit(self, X, y, sample_weight=None, var_prob=None):
-        X, ncat, n, p = self._prepare_fit_inputs(X)
+        X, ncat, n, p, names, cat_cols = self._prepare_fit_inputs(X)
         time, event = _validate_surv_y(y)
-        if time.shape[0] != n:
+        if time.shape[0] != n or event.shape[0] != n:
             raise ValueError("X and y have inconsistent lengths")
         if not np.all(np.isfinite(time)):
             raise ValueError("NA/Inf not permitted in y")
@@ -841,14 +882,9 @@ class RLT_surv(_BaseRLT):
         timepoints = np.sort(np.unique(time[event == 1]))
         if timepoints.shape[0] == 0:
             raise ValueError("no observed failures: event is all zero")
-        tgs = int(self.time_grid_size or 0)
-        if 0 < tgs < timepoints.shape[0]:
-            qs = np.linspace(0.0, 1.0, tgs)
-            idx = np.floor(
-                np.quantile(np.arange(1, timepoints.shape[0] + 1), qs)
-            ).astype(int) - 1
-            idx = np.clip(idx, 0, timepoints.shape[0] - 1)
-            timepoints = timepoints[idx]
+        tgs = _params.check_grid_size(self.time_grid_size, "time_grid_size")
+        if 0 < tgs < timepoints.size:
+            raise ValueError("time_grid_size cannot reduce the training failure-time grid; use band_grid_size at prediction time")
 
         # map observed times onto the 1-based integer grid (R logic)
         y_point = np.empty(n, dtype=np.int64)
@@ -868,13 +904,12 @@ class RLT_surv(_BaseRLT):
         sr = _SPLIT_RULES_SURV.get(str(self.split_rule).lower())
         cp.split_rule = 1 if sr is None else int(sr)
 
-        if self.linear_comb == 1:
+        if cp.linear_comb == 1:
             cp.linear_comb_method = 1
         else:
             cp.linear_comb_method = self._resolve_lc_method(
                 _LC_METHOD_SURV, "'coxph', or 'naive'", {1, 2},
                 "survival", "coxph")
-        cp.reinforcement = bool(self.reinforcement) or int(self.linear_comb) > 1
 
         obsw = (_params.check_obs_weight(sample_weight, n)
                 if sample_weight is not None else np.full(n, 1.0 / n))
@@ -885,12 +920,13 @@ class RLT_surv(_BaseRLT):
                     else self._empty_obstrack())
 
         if cp.linear_comb > 1:
-            out = SurvUniCombForestFit(self._shift_categorical(X), y_point,
+            out = SurvUniCombForestFit(self._shift_categorical(X, cat_cols), y_point,
                                        censor, ncat, obsw, varp, obstrack, cp)
         else:
-            out = SurvUniForestFit(self._shift_categorical(X), y_point, censor,
+            out = SurvUniForestFit(self._shift_categorical(X, cat_cols), y_point, censor,
                                    ncat, obsw, varp, obstrack, cp)
 
+        self._replace_fit_metadata(names, cat_cols)
         self.forest_ = out["FittedForest"]
         self.n_features_in_ = p
         self.ncat_ = ncat
@@ -912,13 +948,13 @@ class RLT_surv(_BaseRLT):
         original = self.timepoints_
         nfail = original.shape[0]
         new_grid = original
-        bgs = int(band_grid_size or 0)
+        bgs = _params.check_grid_size(band_grid_size, "band_grid_size")
         if bgs > 0:
             eff = min(bgs, nfail)
             if eff < nfail:
                 probs = np.linspace(0.05, 1.0, eff)
                 new_grid = np.unique(
-                    np.quantile(original, probs, method="nearest")
+                    np.quantile(original, probs, method="inverted_cdf")
                 ).astype(np.float64)
         new_grid = np.sort(new_grid)
         mapping = np.searchsorted(original, new_grid, side="left")
@@ -975,4 +1011,8 @@ class RLT_surv(_BaseRLT):
         """Harrell's c-index (higher is better)."""
         time, event = _validate_surv_y(y)
         risk = self.predict_risk(X)
+        if time.size != risk.size:
+            raise ValueError("X and y have inconsistent lengths")
+        if not np.all(np.isfinite(time)) or not np.all(np.isin(event, (0, 1))):
+            raise ValueError("survival time must be finite and event must be 0 or 1")
         return float(cindex(time, event, risk))

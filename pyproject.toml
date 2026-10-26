@@ -22,6 +22,7 @@ classifiers = [
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Topic :: Scientific/Engineering :: Mathematics",
 ]
 
@@ -30,7 +31,7 @@ Homepage = "https://github.com/teazrq/RLT-Python"
 Source = "https://github.com/teazrq/RLT-Python"
 
 [project.optional-dependencies]
-test = ["pytest", "scikit-learn>=1.3"]
+test = ["pytest", "scikit-learn>=1.3", "pandas"]
 
 [tool.setuptools]
 packages = ["rlt"]

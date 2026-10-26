@@ -1,4 +1,4 @@
-"""Bit-exact parity tests vs the R package (skipped when R/RLT absent).
+"""Numerical parity tests against the installed R package.
 
 These compare rlt-python against the installed R RLT on identical data
 and identical seeds. They require the *same source version* on both
@@ -15,22 +15,22 @@ import pytest
 
 from rlt import RLT_cla, RLT_reg, RLT_surv
 
-RSCRIPT = shutil.which("Rscript")
+RSCRIPT = os.environ.get("RLT_RSCRIPT") or shutil.which("Rscript")
 HAS_R = RSCRIPT is not None and os.environ.get("RLT_SKIP_R_TESTS") is None
 
-R_PREAMBLE = """.libPaths(c("/tmp/rlt_parity/Rlib", "/home/tez/R/library", .libPaths()))
-library(RLT)
+R_PREAMBLE = """library(RLT)
 """
 
 needs_r = pytest.mark.skipif(not HAS_R, reason="R + RLT not available")
 
 
 def _run_r(script: str):
-    with tempfile.NamedTemporaryFile("w", suffix=".R", delete=False) as f:
+    with tempfile.NamedTemporaryFile("w", suffix=".R", delete=False,
+                                     encoding="utf-8") as f:
         f.write(R_PREAMBLE + script)
         path = f.name
     try:
-        out = subprocess.run([RSCRIPT, path], capture_output=True, text=True,
+        out = subprocess.run([RSCRIPT, "--vanilla", path], capture_output=True, text=True,
                              timeout=600)
         if out.returncode != 0:
             raise RuntimeError(out.stderr[-2000:])
@@ -50,12 +50,12 @@ class TestParityRegression:
         np.savetxt(d / "X.csv", X, fmt="%.17g", delimiter=",")
         np.savetxt(d / "y.csv", y, fmt="%.17g")
         _run_r(f"""
-            X <- as.matrix(read.table("{d}/X.csv", sep = ",", header = FALSE))
-            y <- scan("{d}/y.csv", quiet = TRUE)
+            X <- as.matrix(read.table("{d.as_posix()}/X.csv", sep = ",", header = FALSE))
+            y <- scan("{d.as_posix()}/y.csv", quiet = TRUE)
             fit <- RLT(X, y, ntrees = 50, seed = 42, ncores = 1,
                        model = "regression", verbose = FALSE)
-            write(fit$Prediction, file = "{d}/pred.csv", ncolumns = 1)
-            write(fit$Error, file = "{d}/err.csv", ncolumns = 1)
+            write(fit$Prediction, file = "{d.as_posix()}/pred.csv", ncolumns = 1)
+            write(fit$Error, file = "{d.as_posix()}/err.csv", ncolumns = 1)
         """)
         m = RLT_reg(n_estimators=50, random_state=42, n_jobs=1).fit(X, y)
         R_pred = np.loadtxt(d / "pred.csv")
@@ -71,13 +71,13 @@ class TestParityRegression:
         np.savetxt(d / "X.csv", X, fmt="%.17g", delimiter=",")
         np.savetxt(d / "y.csv", y, fmt="%.17g")
         _run_r(f"""
-            X <- as.matrix(read.table("{d}/X.csv", sep = ",", header = FALSE))
-            y <- scan("{d}/y.csv", quiet = TRUE)
+            X <- as.matrix(read.table("{d.as_posix()}/X.csv", sep = ",", header = FALSE))
+            y <- scan("{d.as_posix()}/y.csv", quiet = TRUE)
             fit <- RLT(X, y, ntrees = 30, seed = 42, ncores = 1,
                        model = "regression", reinforcement = TRUE,
                        param.control = list(embed.ntrees = 25), verbose = FALSE)
-            write(fit$Prediction, file = "{d}/pred.csv", ncolumns = 1)
-            write(fit$Error, file = "{d}/err.csv", ncolumns = 1)
+            write(fit$Prediction, file = "{d.as_posix()}/pred.csv", ncolumns = 1)
+            write(fit$Error, file = "{d.as_posix()}/err.csv", ncolumns = 1)
         """)
         m = RLT_reg(n_estimators=30, reinforcement=True, embed_ntrees=25,
                     random_state=42, n_jobs=1).fit(X, y)
@@ -97,12 +97,12 @@ class TestParityClassification:
         np.savetxt(d / "X.csv", X, fmt="%.17g", delimiter=",")
         np.savetxt(d / "y.csv", y, fmt="%d")
         _run_r(f"""
-            X <- as.matrix(read.table("{d}/X.csv", sep = ",", header = FALSE))
-            y <- factor(scan("{d}/y.csv", quiet = TRUE))
+            X <- as.matrix(read.table("{d.as_posix()}/X.csv", sep = ",", header = FALSE))
+            y <- factor(scan("{d.as_posix()}/y.csv", quiet = TRUE))
             fit <- RLT(X, y, ntrees = 50, seed = 42, ncores = 1,
                        model = "classification", verbose = FALSE)
-            write(as.integer(fit$Prediction), file = "{d}/pred.csv", ncolumns = 1)
-            write(fit$Error, file = "{d}/err.csv", ncolumns = 1)
+            write(as.integer(fit$Prediction), file = "{d.as_posix()}/pred.csv", ncolumns = 1)
+            write(fit$Error, file = "{d.as_posix()}/err.csv", ncolumns = 1)
         """)
         m = RLT_cla(n_estimators=50, random_state=42, n_jobs=1).fit(X, y)
         R_pred = np.loadtxt(d / "pred.csv", dtype=int)
@@ -128,15 +128,15 @@ class TestParitySurvival:
         np.savetxt(d / "y.csv", tt, fmt="%.17g")
         np.savetxt(d / "c.csv", ev, fmt="%d")
         _run_r(f"""
-            X <- as.matrix(read.table("{d}/X.csv", sep = ",", header = FALSE))
-            y <- scan("{d}/y.csv", quiet = TRUE)
-            cen <- scan("{d}/c.csv", quiet = TRUE)
+            X <- as.matrix(read.table("{d.as_posix()}/X.csv", sep = ",", header = FALSE))
+            y <- scan("{d.as_posix()}/y.csv", quiet = TRUE)
+            cen <- scan("{d.as_posix()}/c.csv", quiet = TRUE)
             fit <- RLT(X, y, censor = cen, ntrees = 50, seed = 42,
                        ncores = 1, model = "survival", verbose = FALSE)
-            write(fit$Error, file = "{d}/err.csv", ncolumns = 1)
+            write(fit$Error, file = "{d.as_posix()}/err.csv", ncolumns = 1)
             pred <- predict(fit, X[1:5, ])
-            write(as.vector(pred$Survival), file = "{d}/S.csv", ncolumns = 1)
-            write(pred$timepoints, file = "{d}/t.csv", ncolumns = 1)
+            write(as.vector(pred$Survival), file = "{d.as_posix()}/S.csv", ncolumns = 1)
+            write(pred$timepoints, file = "{d.as_posix()}/t.csv", ncolumns = 1)
         """)
         ys = np.empty(n, dtype=[("event", "?"), ("time", "<f8")])
         ys["event"] = ev.astype(bool)

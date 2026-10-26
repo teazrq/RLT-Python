@@ -1,18 +1,19 @@
-# rlt — Reinforcement Learning Trees for Python
+# RLT for Python
 
 [![CI](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/rlt-forests.svg)](https://pypi.org/project/rlt-forests/)
 
-`rlt` is a Python port of the [RLT R package](https://cran.r-project.org/package=RLT)
-(Reinforcement Learning Trees, Zhu, Zeng & Kosorok, and successors) —
+`rlt` is a Python port of the [RLT R package](https://github.com/teazrq/RLT)
+(Reinforcement Learning Trees, Zhu, Zeng & Kosorok, and successors):
 random forests with **embedded-model variable selection** and
 **linear-combination splits**, for regression, classification, and
-survival analysis. It is **fully scikit-learn compatible**: if you know
-how to use `RandomForestRegressor`, you already know how to use `rlt`.
+survival analysis. Its estimators use scikit-learn's `fit`, `predict`,
+parameter, and pipeline interfaces.
 
-The ~19k-line OpenMP/Armadillo C++ compute core is the exact core of the
-R package (vendored, R/Rcpp-free), exposed through pybind11 — so results
-are R-grade fast and parallel.
+The shared tree algorithms come from RLT source version 6.1.1, with
+R/Rcpp interfaces replaced by pybind11. Python has its own estimator and
+array APIs. The optional smoothed confidence-band method uses a separate
+spline approximation and is not numerically identical to R's `mgcv` smoother.
 
 ## Installation
 
@@ -35,22 +36,30 @@ pip install .
 ### Regression
 
 ```python
+import numpy as np
 from rlt import RLT_reg
 
-model = RLT_reg(n_estimators=500, random_state=42)
-model.fit(X, y)                # sklearn API
+rng = np.random.default_rng(42)
+X = rng.normal(size=(200, 6))
+y_reg = X[:, 0] - X[:, 1] + rng.normal(size=200)
+model = RLT_reg(n_estimators=100, importance="permute", random_state=42)
+model.fit(X, y_reg)
 pred = model.predict(X)
 model.oob_error_               # out-of-bag MSE
 model.feature_importances_
 ```
+
+These predictions illustrate returned values on training rows. Use the
+stored OOB error or separate held-out data to evaluate prediction accuracy.
 
 ### Classification
 
 ```python
 from rlt import RLT_cla
 
-model = RLT_cla(n_estimators=500)
-model.fit(X, y)                # string labels fine
+y_class = np.where(y_reg > 0, "positive", "negative")
+model = RLT_cla(n_estimators=100, random_state=42)
+model.fit(X, y_class)          # string labels are supported
 prob = model.predict_proba(X)  # (n, n_classes)
 ```
 
@@ -60,15 +69,18 @@ prob = model.predict_proba(X)  # (n, n_classes)
 import numpy as np
 from rlt import RLT_surv
 
-y = np.empty(n, dtype=[("event", "?"), ("time", float)])  # sksurv convention
-y["event"], y["time"] = event, time
-model = RLT_surv(split_rule="logrank")
-model.fit(X, y)
+event_time = rng.exponential(1 / np.exp(X[:, 0]))
+censor_time = rng.uniform(0, 3, size=len(X))
+y_surv = np.empty(len(X), dtype=[("event", "?"), ("time", float)])
+y_surv["event"] = event_time <= censor_time
+y_surv["time"] = np.minimum(event_time, censor_time)
+model = RLT_surv(n_estimators=100, split_rule="logrank", random_state=42)
+model.fit(X, y_surv)
 S = model.predict_survival_function(X)   # (n, T) survival curves
-model.score(X, y)                        # Harrell's c-index
+model.score(X, y_surv)                   # in-sample concordance, not OOB
 ```
 
-### Reinforcement learning trees (the point of the package)
+### Reinforcement and linear combination splits
 
 ```python
 from rlt import RLT_reg
@@ -76,50 +88,66 @@ from rlt import RLT_reg
 # embedded-model variable selection + linear combination splits
 model = RLT_reg(
     n_estimators=100,        # R default under reinforcement
-    linear_comb=2,           # combine 2 variables per split
+    linear_comb=2,           # combine up to 2 variables per split
     linear_comb_method="sir",  # or naive / lm / pca
     reinforcement=True,      # embedded random-forest pre-screening
     random_state=42,
 )
-model.fit(X, y)
+model.fit(X, y_reg)
 ```
 
-On linear signal DGPs, `linear_comb=2` roughly halves the OOB error of
-the axis-aligned forest (see `tests/`).
+Reinforcement uses embedded forests to guide variable selection. Linear
+combination splits choose a predictor direction and do not require
+reinforcement. This example demonstrates the controls without making an
+accuracy comparison.
 
 ### Variance estimation & confidence bands
 
 ```python
 model = RLT_reg(n_estimators=2000, var_mode="matched")  # or "ij"/"jack"
-pred, var = model.predict_var(X)
+model.fit(X, y_reg)
+X_query = X[:5]
+pred, var = model.predict_var(X_query)
 
 model = RLT_surv(n_estimators=2000, var_mode="matched")
-S, cov = model.predict_var(X_test)
+model.fit(X, y_surv)
+S, cov = model.predict_var(X_query)  # cov is on the cumulative-hazard scale
 
 from rlt import get_surv_band
-band = get_surv_band(model, X_test, alpha=0.05, approach="smoothed")
+band = get_surv_band(model, X_query, alpha=0.05, approach="smoothed")
 band["lower"], band["upper"]  # simultaneous survival bands
 ```
+
+The bands target the conditional survival curve separately for each query
+point over the returned time grid. Their reference is `exp(-CHF)`. For
+linear combination forests, the returned survival estimate instead averages
+tree product-limit curves; its sampling variance is not estimated by this
+CHF-based calculation. These are nominal bands, not event-time prediction
+intervals.
 
 ### Forest similarity kernel
 
 ```python
-K = model.forest_kernel(X_test)          # (n, n) co-occurrence counts
-Kc = model.forest_kernel(X_test, X_train)
-Kt = model.forest_kernel(X_test, X_train, vs_train=True)  # needs resample_track=True
+K = model.forest_kernel(X_query)          # raw leaf-sharing tree counts
+Kc = model.forest_kernel(X_query, X)
+Kt = model.forest_kernel(X_query, X, vs_train=True)  # in-bag multiplicity
 
 # OOB self-kernel (RLT >= 6.1.0): co-occurrence counted only from trees
-# where both observations are out-of-bag — unbiased for DoF estimation
-out = model.forest_kernel(X_train, oob=True)   # needs resample_track=True
+# where both observations were excluded from fitting that tree
+out = model.forest_kernel(X, oob=True)
 out["Kernel"]   # (n, n) normalized co-occurrence in [0, 1]
 out["N"], out["C"]  # both-OOB counts / both-OOB same-leaf counts
 ```
+
+Training and OOB kernels require retained resampling records, enabled by
+`resample_track=True` or a variance mode. Supply the original training rows
+in their original order. Ordinary counts are not normalized prediction weights.
 
 ## Parameter reference
 
 | Python (sklearn-style) | R (RLT) | Default | Notes |
 |---|---|---|---|
-| `n_estimators` | `ntrees` | 500 (100 if reinforcement) | |
+| `n_estimators` | `ntrees` | 500 | R defaults to 100 under reinforcement; set explicitly for comparisons. |
 | `mtry` | `mtry` | max(1, p//2) | |
 | `min_samples_leaf` | `nmin` | 5 | |
 | `nsplit` | `nsplit` | 0 | random cut points; 0 = all (best split) |
@@ -134,24 +162,30 @@ out["N"], out["C"]  # both-OOB counts / both-OOB same-leaf counts
 | `split_rule` | `split.rule` | model-specific | surv: logrank/suplogrank/coxgrad |
 | `embed_*` | `param.control$embed.*` | see R docs | embedded forest controls |
 | `n_jobs` | `ncores` | -1 | OpenMP threads |
-| `random_state` | `seed` | None | numpy seeding |
+| `random_state` | `seed` | None | Integer forest seed, or a NumPy RandomState. |
 
-RNG note: trees are seeded through Python's `random_state` (numpy), then
-per-tree seeds derive inside C++ — reproducible across platforms, not
-bit-compatible with R.
+For a fixed dataset, integer `random_state` supplies the C++ forest seed,
+corresponding to R's `RLT(seed=...)`. Data generation uses a separate RNG.
+Reproducibility also depends on the implementation and numerical toolchain;
+cross-platform bitwise identity is not promised.
 
 ## Development
 
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e . pytest scikit-learn threadpoolctl
-pytest tests/
+python -m pip install --no-build-isolation -e . pytest scikit-learn threadpoolctl
+python -m pytest tests/
 ```
 
-The C++ core under `src/cpp/` is regenerated idempotently from the
-pristine R sources by `tools/vendor_core.py` (strips Rcpp, swaps the RNG,
-adds the compat header). The `smoke` and differential-vs-R scripts used
-during development live in the commit history.
+Use a shared user-wide or machine-wide Python installation. Install
+`setuptools` and `pybind11` there before building without isolation.
+The source build configuration and CI currently target Linux; Windows and
+macOS installation support should not be inferred from the estimator API.
+
+The C++ core under `src/cpp/` is regenerated from an explicitly selected R
+checkout by `tools/vendor_core.py`, which preserves Python's compatibility
+layer. The parity tests use `Rscript` and an RLT installation in a shared R
+library. Set `RLT_RSCRIPT` if that executable is not on PATH. Compare the
+same source revisions and parameter values in both languages.
 
 ## License
 

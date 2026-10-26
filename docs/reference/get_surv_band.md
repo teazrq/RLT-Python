@@ -1,8 +1,14 @@
 # get_surv_band
 
-Simultaneous confidence bands for survival curves predicted by a
-variance-enabled [`RLT_surv`](rlt_surv.md) — the Python port of the R
-package's `get.surv.band()`.
+Nominal simultaneous bands for the conditional survival curve at each
+query point, using a variance-enabled [`RLT_surv`](rlt_surv.md). Coverage
+is specified separately for each curve over the returned time grid.
+These are not prediction intervals for an individual's event time.
+
+The reference curve is `exp(-CHF)`, and the covariance is on the CHF
+scale. For linear combination forests, the returned survival estimate is
+the mean of tree product-limit curves; this band does not directly
+estimate uncertainty in that different estimator.
 
 ```python
 import numpy as np
@@ -20,7 +26,8 @@ y["time"] = np.minimum(t_event, t_censor)
 model = RLT_surv(n_estimators=1000, var_mode="matched", random_state=42)
 model.fit(X, y)
 
-band = get_surv_band(model, X, i=0, alpha=0.05, approach="smoothed")
+X_query = X[:3]
+band = get_surv_band(model, X_query, i=0, alpha=0.05, approach="smoothed")
 band["lower"], band["upper"]  # (n, T) band limits
 ```
 
@@ -29,7 +36,7 @@ band["lower"], band["upper"]  # (n, T) band limits
 ```python
 get_surv_band(
     model,          # fitted RLT_surv with var_mode != "none"
-    X,              # test covariates
+    X_query,        # covariates for three query points
     i=0,            # subject index: 0 = all, 1-based like R when positive
     alpha=0.05,     # level or array of levels
     approach="naive",
@@ -60,12 +67,19 @@ get_surv_band(
 
 ### Approaches
 
-- **"naive"** — marginal SDs `sqrt(diag(Cov))`; Monte Carlo band with the
+- **"naive"**: marginal SDs `sqrt(diag(Cov))`; Monte Carlo band with the
   full covariance matrix.
-- **"smoothed"** — tensor-product penalized B-spline smoothing of the
+- **"smoothed"**: tensor-product penalized B-spline smoothing of the
   covariance surface, rank-`k` PSD truncation, positive-spectrum residual
-  correction, and eigenvalue-ratio weights — the same pipeline as the R
-  package.
+  correction, and eigenvalue-ratio weights. Python's smoother uses actual
+  failure times and an approximate GCV smoothing choice. It is an
+  alternative to R's index-coordinate `mgcv` GAM, so the two smoothed
+  bands need not agree numerically. Grids too short for smoothing fall
+  back to the raw marginal scales with a warning.
+
+Both methods simulate from the supplied CHF covariance. Smoothing changes
+the marginal standardizing scales. `nsim` controls Monte Carlo precision
+of the critical value; increasing it does not establish coverage.
 
 ### Returns
 
@@ -73,10 +87,10 @@ A dict with:
 
 | Key | Shape | Description |
 |---|---|---|
-| `lower` / `upper` | `(len(i), T)` | Band limits for the selected subjects. |
+| `lower` / `upper` | `(n_selected, T)` or `(n_selected, n_alpha, T)` | Limits for one or multiple alpha levels, respectively. |
 | `timepoints` | `(T,)` | The time grid used. |
 | `diagnostics` | list of dicts | Per-subject SDs, variance-explained, rank/eigenvalue info. |
-| `marsd` | — | Placeholder for R compatibility (always None). |
+| `marsd` | `(n_selected, T)` | Final marginal standardizing scales. |
 
 ## Examples
 
@@ -97,11 +111,12 @@ model = RLT_surv(n_estimators=1000, var_mode="matched", random_state=0)
 model.fit(X, y)
 
 # Naive band for the first subject
-band_naive = get_surv_band(model, X, i=1, alpha=0.05,
+X_query = X[:3]
+band_naive = get_surv_band(model, X_query, i=1, alpha=0.05,
                            approach="naive", nsim=5000)
 
 # Smoothed band with rank chosen by eigenvalue proportion
-band_smooth = get_surv_band(model, X, i=0, alpha=0.05,
+band_smooth = get_surv_band(model, X_query, i=0, alpha=0.05,
                             approach="smoothed", nsim=5000,
                             k_mode="proportion", k_prop=0.95)
 ```
