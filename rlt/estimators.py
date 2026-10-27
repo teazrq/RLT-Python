@@ -6,6 +6,7 @@ ports of the RLT R package's RegForest / ClaForest / SurvForest.
 
 from __future__ import annotations
 
+from numbers import Real
 import warnings
 
 import numpy as np
@@ -755,6 +756,35 @@ class RLT_cla(ClassifierMixin, _BaseRLT):
 
     def predict_log_proba(self, X):
         return np.log(self.predict_proba(X))
+
+    def score(self, X, y, sample_weight=None):
+        """Mean accuracy, including declared nonintegral numeric classes."""
+        classes = getattr(self, "classes_", None)
+        if (classes is None or classes.dtype.kind != "f"
+                or np.all(classes == np.floor(classes))):
+            return super().score(X, y, sample_weight=sample_weight)
+
+        # sklearn otherwise identifies these accepted class labels as continuous.
+        from sklearn.metrics import accuracy_score
+
+        truth = column_or_1d(y)
+        if np.iscomplexobj(truth):
+            raise ValueError("y must contain real classification labels")
+        for label in truth:
+            if np.iscomplexobj(label):
+                raise ValueError("y must contain real classification labels")
+            try:
+                invalid = (label is None or bool(label != label)
+                           or (isinstance(label, Real) and not np.isfinite(label)))
+            except (TypeError, ValueError) as exc:
+                raise ValueError("y contains missing or nonfinite classification labels") from exc
+            if invalid:
+                raise ValueError("y contains missing or nonfinite classification labels")
+
+        lookup = {label: k for k, label in enumerate(classes)}
+        actual = np.asarray([lookup.get(label, -1) for label in truth], dtype=np.int64)
+        predicted = np.asarray([lookup[label] for label in self.predict(X)], dtype=np.int64)
+        return accuracy_score(actual, predicted, sample_weight=sample_weight)
 
     def predict_var(self, X, var_mode=None, keep_all=False, ncores=0):
         """Class probabilities with variance; returns (prob, variance).

@@ -296,6 +296,102 @@ def test_float_categorical_classes_and_single_observed_class_remain_declared():
         model_fit(RLT_cla, X, missing)
 
 
+@pytest.mark.parametrize("categories", [[.75, .25], [.25, .75]])
+@pytest.mark.parametrize("container", ["categorical", "series", "index", "array", "column"])
+def test_float_categorical_score_matches_accuracy_with_weights_and_unseen_truth(categories, container):
+    pd = pytest.importorskip("pandas")
+    X, _ = data(RLT_cla)
+    y = pd.Categorical(np.resize([.75, .25], len(X)), categories=categories)
+    fitted = model_fit(RLT_cla, X, y, min_samples_leaf=100,
+                       resample_replace=False, resample_prob=1)
+    truth = np.asarray(y).copy()
+    truth[::5] = .5  # A label absent from the fitted classes counts as incorrect.
+    prediction = fitted.predict(X)
+    weights = np.arange(1., len(X) + 1)
+    supplied = {
+        "categorical": lambda: pd.Categorical(truth, categories=[.5, .25, .75]),
+        "series": lambda: pd.Series(pd.Categorical(truth, categories=[.5, .25, .75])),
+        "index": lambda: pd.CategoricalIndex(truth, categories=[.5, .25, .75]),
+        "array": lambda: truth,
+        "column": lambda: truth[:, None],
+    }[container]()
+    assert fitted.score(X, supplied) == pytest.approx(np.mean(truth == prediction))
+    assert fitted.score(X, supplied, sample_weight=weights) == pytest.approx(
+        np.average(truth == prediction, weights=weights))
+    assert fitted.score(X, y) == pytest.approx(np.mean(np.asarray(y) == prediction))
+
+
+@pytest.mark.parametrize("invalid", [np.nan, np.inf, -np.inf, None, "pandas_missing"])
+def test_float_categorical_score_rejects_missing_or_nonfinite_truth(invalid):
+    pd = pytest.importorskip("pandas")
+    X, _ = data(RLT_cla)
+    y = pd.Categorical(np.resize([.75, .25], len(X)))
+    fitted = model_fit(RLT_cla, X, y)
+    truth = np.asarray(y, dtype=object).copy()
+    truth[0] = pd.NA if isinstance(invalid, str) else invalid
+    with pytest.raises(ValueError, match="missing or nonfinite"):
+        fitted.score(X, truth)
+
+
+def test_float_categorical_score_preserves_target_and_weight_validation():
+    pd = pytest.importorskip("pandas")
+    X, _ = data(RLT_cla)
+    y = pd.Categorical(np.resize([.75, .25], len(X)))
+    fitted = model_fit(RLT_cla, X, y)
+    with pytest.raises(ValueError, match="inconsistent numbers of samples"):
+        fitted.score(X, y[:-1])
+    with pytest.raises(ValueError, match="1d array"):
+        fitted.score(X, np.column_stack([y, y]))
+    with pytest.raises(ValueError, match="inconsistent numbers of samples"):
+        fitted.score(X, y, sample_weight=np.ones(len(X) - 1))
+    with pytest.raises(ValueError):
+        fitted.score(X, y, sample_weight=np.ones((len(X), 2)))
+    with pytest.raises(ValueError):
+        fitted.score(X, y, sample_weight=np.full(len(X), np.nan))
+    for dtype in (complex, object):
+        truth = np.asarray(y, dtype=dtype).copy()
+        truth[0] = .25 + 1j
+        with pytest.raises(ValueError, match="real classification labels|Complex data"):
+            fitted.score(X, truth)
+
+
+@pytest.mark.parametrize("labels", [["a", "z"], [0, 1], [0., 1.]])
+def test_ordinary_classifier_score_keeps_mixin_path(labels, monkeypatch):
+    from sklearn.base import ClassifierMixin
+    X, _ = data(RLT_cla)
+    y = np.resize(labels, len(X))
+    fitted = model_fit(RLT_cla, X, y)
+    calls = []
+    original = ClassifierMixin.score
+
+    def observed(self, *args, **kwargs):
+        calls.append(True)
+        return original(self, *args, **kwargs)
+
+    monkeypatch.setattr(ClassifierMixin, "score", observed)
+    weights = np.arange(1., len(X) + 1)
+    assert fitted.score(X, y, sample_weight=weights) == pytest.approx(
+        np.average(y == fitted.predict(X), weights=weights))
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("explicit_cv", [False, True])
+def test_float_categorical_default_scoring_works_with_kfold(explicit_cv):
+    pd = pytest.importorskip("pandas")
+    from sklearn.model_selection import KFold, cross_val_score
+    X, _ = data(RLT_cla)
+    y = pd.Categorical(np.where(X[:, 0] > 0, .25, .75), categories=[.75, .25])
+    estimator = RLT_cla(n_estimators=8, random_state=19, n_jobs=1)
+    folds = KFold(3, shuffle=True, random_state=12) if explicit_cv else KFold(3)
+    scores = cross_val_score(estimator, X, y, cv=folds if explicit_cv else 3,
+                             error_score="raise")
+    expected = []
+    for train, test in folds.split(X, y):
+        fitted = clone(estimator).fit(X[train], y[train])
+        expected.append(np.mean(fitted.predict(X[test]) == np.asarray(y[test])))
+    np.testing.assert_array_equal(scores, expected)
+
+
 def signed_preset(n=48, trees=8):
     counts = np.full((n, trees), -1, dtype=np.int64)
     counts[:4] = 2

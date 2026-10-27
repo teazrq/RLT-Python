@@ -83,7 +83,7 @@ has classification-specific choices:
 | `importance_table()` | `ImportanceTable` | Variable-importance summary (Variable / VI, plus SD / Z / Sig when fitted with `importance != "none"` and `var_mode="matched"`); same as `rlt.importance(model)`. |
 | `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Forest similarity kernel. |
 | `get_one_tree(tree_id)` | dict of ndarrays | Raw arrays of tree `tree_id` (0-indexed). |
-| `score(X, y)` | float | Mean accuracy (sklearn convention). |
+| `score(X, y, sample_weight=None)` | float | Mean accuracy, including declared numeric categories, with optional sample weights. |
 
 ## Fitted attributes
 

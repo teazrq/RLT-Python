@@ -7,6 +7,8 @@
   counts remain unchanged, subject to matched sampling's even-count rule.
 - Support pandas categorical predictors and responses with fitted label
   dictionaries and declared class order, while keeping pandas optional.
+- Make classifier `score` accept declared nonintegral numeric class labels,
+  including weighted accuracy and default cross-validation scoring.
 - Add signed `resample_preset` fitting, complete `predict_details` outputs,
   per-tree predictions across all families, labeled OOB outputs with an
   availability mask, standalone `cindex`, and readable tree inspection.
