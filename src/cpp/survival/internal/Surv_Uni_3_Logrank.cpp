@@ -56,7 +56,7 @@ void Surv_Uni_Logrank_Cont(Split_Class& TempSplit,
       return;
     }
     
-    uvec indices = sort_index(x(obs_id)); 
+    uvec indices = stable_sort_index(x(obs_id));
     uvec obs_id_sorted = obs_id(indices);
     
     if ( x(obs_id_sorted(0)) == x(obs_id_sorted(N-1)) ) return;  
@@ -116,7 +116,7 @@ void Surv_Uni_Logrank_Cont(Split_Class& TempSplit,
     }
     
     // this is the index used for Y and Censor (sorted based on x)
-    uvec indices = sort_index(x(obs_id)); 
+    uvec indices = stable_sort_index(x(obs_id));
     
     // this is the sorted obs_id for x 
     uvec obs_id_sorted = obs_id(indices);
@@ -1882,7 +1882,7 @@ void Surv_Uni_SupLogrank_Cont(Split_Class& TempSplit,
     return;
   }
 
-  uvec indices = sort_index(x(obs_id));
+  uvec indices = stable_sort_index(x(obs_id));
   uvec obs_id_sorted = obs_id(indices);
 
   if (x(obs_id_sorted(0)) == x(obs_id_sorted(N-1))) return;

@@ -19,6 +19,8 @@
   primary boolean options. Omitted seeds follow NumPy's global RNG.
 - Correct shared native handling of insufficient variable-sampling support,
   zero-weight SIR slices, and unweighted LC supremum-logrank splitting.
+- Preserve tied-observation order across Armadillo versions, including
+  survival failure/censor ordering and weighted split searches.
 - Allow survival bands from saved CHF/covariance predictions and compatible
   prediction-time uncertainty modes. Use the R-compatible `mgcv` 1.9-4
   tensor smoother for `approach="smoothed"`, replacing the previous

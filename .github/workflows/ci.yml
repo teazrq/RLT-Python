@@ -52,7 +52,14 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel pybind11
           python -m pip install --no-build-isolation -e . pytest scikit-learn threadpoolctl pandas
       - name: Test
-        run: pytest tests/ -q -rs
+        run: pytest tests/ -q -rs --basetemp="${{ runner.temp }}/rlt-tests"
+      - name: Preserve failed live R comparisons
+        if: failure() && matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-r-comparison-inputs
+          path: ${{ runner.temp }}/rlt-tests
+          retention-days: 7
 
   # macos/windows wheels via cibuildwheel (sdist builds need armadillo;
   # enable when publishing; kept minimal for now)

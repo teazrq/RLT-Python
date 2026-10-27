@@ -2,40 +2,29 @@
 
 This page helps you install the `rlt` package and points you to the modeling
 tutorials. It is the Python equivalent of the R package's "Get Started"
-vignette, adapted for `pip` and the platforms the C++ core supports.
+vignette, adapted for the current GitHub source and its compiled core.
 Use a shared user-wide or machine-wide Python installation.
 
 ## Install the rlt package
 
-### Released version
-
-Install from PyPI (system dependencies: Armadillo, LAPACK, BLAS, OpenMP):
-
-```bash
-pip install rlt-forests
-```
-
-On Debian/Ubuntu the system libraries are:
+The 0.3.0 alignment updates documented here are available from the GitHub
+source. This change does not publish a new PyPI release. The source build
+needs Armadillo, LAPACK, BLAS, OpenMP, and a C++17 compiler.
+On Debian/Ubuntu, install the shared system libraries with:
 
 ```bash
 sudo apt-get install -y libarmadillo-dev liblapack-dev \
     libopenblas-dev libomp-dev g++
 ```
 
-### Development version
-
-Install the development version from GitHub:
+Install the build tools in your shared Python installation, then build
+the current source without an isolated build environment:
 
 ```bash
+python -m pip install setuptools wheel pybind11
 git clone https://github.com/teazrq/RLT-Python
 cd RLT-Python
-pip install .
-```
-
-Or, directly from the repository URL:
-
-```bash
-pip install git+https://github.com/teazrq/RLT-Python
+python -m pip install --no-build-isolation .
 ```
 
 ### Verify the installation
@@ -63,11 +52,17 @@ print(f"OOB error: {model.oob_error_:.3f}")
 
 ## Categorical predictors
 
-`rlt` does not consume R-style factors or pandas `Categorical` columns
-directly. Instead, declare categorical columns with the
-`categorical_features` constructor parameter — the sklearn-style
-replacement for R's `data.frame` factor path — and pass the columns as
-**non-negative integer level codes** (`0, 1, ..., k-1`):
+Pandas is optional. In a pandas data frame, unordered `Categorical` columns
+automatically use categorical splits, preserving declared levels, including
+unused ones. Ordered categoricals and string columns use numerical ranks.
+Prediction matches named columns and reuses the fitted label dictionary;
+unknown labels and missing values are rejected.
+Install pandas in your shared Python installation with
+`python -m pip install pandas` when using this optional input path.
+
+Plain numeric arrays remain supported. Declare their nominal columns with
+`categorical_features` and supply **non-negative integer level codes**
+(`0, 1, ..., k-1`):
 
 ```python
 import numpy as np
@@ -91,56 +86,38 @@ model = RLT_reg(n_estimators=100,
                 categorical_features=[False, False, True, True],
                 random_state=0).fit(X, y)
 
-model.ncat_  # array([1, 1, 3, 2]) — 1 = continuous, k = k-level categorical
+model.ncat_  # array([1, 1, 3, 2]); 1 = continuous, k = k-level categorical
 ```
 
 Rules to keep in mind:
 
-- Declared columns must be non-negative integer codes `0..k-1` —
-  anything else raises a `ValueError`. Encode with
-  `pandas.factorize()` or `sklearn.preprocessing.OrdinalEncoder`
-  first (both produce 0-based codes by default).
+- Nominal columns in a plain numeric array must use non-negative integer
+  codes `0..k-1`; other values raise a `ValueError`.
+- A numeric prediction column for a fitted labeled predictor means
+  zero-based training codes. Retain a pandas categorical dtype when
+  supplying numeric labels such as 10, 2, and 1, so they are matched as
+  labels rather than interpreted as codes.
 - A categorical column may have at most **53 levels** (`ValueError`
-  beyond that, matching the R package).
-- If you *forget* to declare a categorical column and it has few unique
-  values (≤ 10), `fit()` emits a `UserWarning` hinting that it may be
-  categorical — worth a look before you trust continuous splits on it.
-- Undeclared columns are treated as continuous, which is safe for
-  genuinely numeric low-cardinality data.
+  beyond that, matching the R package). Ordered and string rank encodings
+  use numerical splits rather than categorical splits.
+- A numerical column with few unique values (up to 10) can trigger a
+  `UserWarning` suggesting an explicit categorical declaration. It remains
+  numerical unless declared otherwise.
+
+See [Model Workflows](../articles/model-workflows.md) for category reordering
+and declared response-class levels.
 
 ## Platform notes
 
-### Linux
-
-Linux is the best-supported platform: install the system packages above and
-`pip install` works out of the box. Parallelism uses OpenMP — set the
-`OMP_NUM_THREADS` environment variable if you need to limit threads.
-
-### macOS
-
-`pip install rlt-forests` builds the C++ core from source, so you need
-AppleClang (via Xcode or the Command Line Tools) plus Homebrew libraries:
-
-```bash
-xcode-select --install
-brew install armadillo lapack openblas libomp
-pip install rlt-forests
-```
-
-`libomp` provides OpenMP on macOS (AppleClang does not ship it). Without it
-the package still builds, but runs single-threaded.
-
-### Windows
-
-A C++ compiler from Visual Studio Build Tools plus
-[vcpkg](https://vcpkg.io/) (`armadillo`, `lapack`, `openblas`) is required
-for source builds. Prebuilt wheels are planned; until then Linux and macOS
-are the recommended platforms.
+The standard build configuration and CI target Linux with GCC and OpenMP.
+macOS and Windows builds require platform-specific compiler and linker
+configuration; the commands above are not a tested installation recipe for
+those platforms. Set `n_jobs` on the estimator to control forest parallelism.
 
 ## Randomness and reproducibility
 
-Unlike R's `set.seed()`, `rlt` follows the scikit-learn convention: seeds
-are passed per estimator through `random_state`:
+Pass an integer `random_state` for a repeatable forest seed, separately
+from the NumPy generator used to simulate data:
 
 ```python
 from rlt import RLT_reg
@@ -149,8 +126,10 @@ model = RLT_reg(n_estimators=200, random_state=42)
 model.fit(X, y)
 ```
 
-The same `random_state` + same data + same parameters gives the same
-forest on every platform. See the
+The same integer seed, data, parameters, and numerical environment support
+repeatable fits. Cross-platform bitwise identity is not promised. With
+`random_state=None`, fitting draws from NumPy's global RNG, so
+`np.random.seed(...)` controls omitted forest seeds. See the
 [Seeds & Reproducibility](../articles/feature-seed.md) article for the full
 story, including how seeds interact with data simulation.
 

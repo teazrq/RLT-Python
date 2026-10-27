@@ -194,6 +194,66 @@ def test_suplogrank_zero_variance_cannot_win_a_split():
     assert all(np.isfinite(h).all() for tree in forest["NodeHaz"] for h in tree)
 
 
+def _single_time_logrank(projected, event, cut):
+    """Two-sample logrank statistic when every observation has one time."""
+    left = projected <= cut
+    n, failures, left_n = len(event), event.sum(), left.sum()
+    expected = failures * left_n / n
+    variance = expected * (1 - failures / n) * (n - left_n) / (n - 1)
+    return (event[left].sum() - expected)**2 / variance
+
+
+def _single_time_best_logrank(projected, event):
+    values = np.unique(projected)
+    cuts = (values[:-1] + values[1:]) / 2
+    return max(_single_time_logrank(projected, event, cut) for cut in cuts)
+
+
+@pytest.mark.parametrize("ncores", [1, 2])
+def test_survival_LC_retains_failure_order_among_tied_times(ncores):
+    # An unstable second time sort can move both failures behind censoring,
+    # collapse the only failure time to zero, and incorrectly produce a stump.
+    k = np.arange(32)
+    X = np.column_stack([k, k % 7 + .01 * k]).astype(float)
+    event = np.r_[np.ones(2), np.zeros(30)]
+    cp = _params(n=32, p=2, comb=True, ncores=ncores)
+    cp.linear_comb_method = 2
+    forest = _fit("survival", True, X, (np.ones(32), event), cp)["FittedForest"]
+    # Independent Cox score at beta=0, scaled by marginal logrank scores.
+    score = X[event == 1].sum(axis=0) - event.sum() * X.mean(axis=0)
+    screening = np.array([_single_time_best_logrank(X[:, j], event) for j in range(2)])
+    expected_load = score * np.sqrt(screening)
+    for variables, load, cut, hazards in zip(forest["SplitVar"], forest["SplitLoad"],
+                                             forest["SplitValue"], forest["NodeHaz"]):
+        assert len(variables) == 3
+        assert set(variables[0]) == {0, 1}
+        assert np.count_nonzero(load[0]) == 2
+        np.testing.assert_allclose(load[0], expected_load[variables[0]], rtol=1e-12, atol=1e-12)
+        projected = X[:, variables[0]] @ load[0]
+        np.testing.assert_allclose(_single_time_logrank(projected, event, cut[0]),
+                                   _single_time_best_logrank(projected, event), rtol=1e-12)
+        assert all(np.isfinite(h).all() for h in hazards)
+
+
+@pytest.mark.parametrize("ncores", [1, 2])
+def test_weighted_Gini_ties_retain_the_reference_split_order(ncores):
+    # Stable within-value ordering chooses the reference partition. Unstable
+    # ordering changes roundoff in an otherwise tied pure-class Gini score.
+    k = np.arange(32)
+    X = np.column_stack([k % 3, k % 4]).astype(float)
+    weights = (1 + k % 5).astype(float)
+    weights /= weights.sum()
+    cp = _params(n=32, p=2, ncores=ncores)
+    forest = _fit("classification", False, X, np.zeros(32), cp,
+                  weights=weights)["FittedForest"]
+    for variables, cuts, probabilities in zip(forest["SplitVar"], forest["SplitValue"],
+                                               forest["NodeProb"]):
+        np.testing.assert_array_equal(variables, [0, -1, -1])
+        assert cuts[0] == 1.5
+        np.testing.assert_allclose(probabilities, np.tile([1., 0.], (3, 1)),
+                                   rtol=0, atol=8 * np.finfo(float).eps)
+
+
 @pytest.mark.parametrize("model", ["regression", "classification", "survival"])
 @pytest.mark.parametrize("comb", [False, True])
 def test_native_OOB_counts_do_not_require_retaining_tracking(model, comb):

@@ -5,7 +5,7 @@ the Python port of the RLT R package's classification vignette.
 
 ## Prerequisites
 
-Install `rlt` (`pip install rlt-forests`), then import it:
+Install the current source as described in [Get Started](get-started.md), then import it:
 
 ```python
 from rlt import RLT_cla

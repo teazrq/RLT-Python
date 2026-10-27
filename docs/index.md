@@ -86,21 +86,23 @@ agreement and random-stream limits.
 
 ## Installation
 
-```bash
-# system deps: armadillo, lapack, blas, openmp
-# (e.g. apt install libarmadillo-dev liblapack-dev libopenblas-dev)
-pip install rlt-forests
-```
-
-From source:
+The 0.3.0 alignment updates documented here are available from the GitHub
+source. This change does not publish a new PyPI release. To use these APIs,
+build the current source with shared Python dependencies:
 
 ```bash
+# system deps: armadillo, lapack, blas, openmp (e.g. apt install
+# libarmadillo-dev liblapack-dev libopenblas-dev)
+python -m pip install setuptools wheel pybind11
 git clone https://github.com/teazrq/RLT-Python
 cd RLT-Python
-pip install .
+python -m pip install --no-build-isolation .
 ```
 
-See [Get Started](tutorials/get-started.md) for platform notes.
+See [Get Started](tutorials/get-started.md) for the Linux system packages,
+platform notes, and optional pandas category encoding. Numeric arrays can
+continue to use zero-based category codes with `categorical_features`;
+labeled pandas inputs retain fitted category dictionaries.
 
 ## Quickstart
 
