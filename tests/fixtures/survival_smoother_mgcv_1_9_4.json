@@ -2,8 +2,10 @@
   "versions": [
     "R 4.6.1",
     "mgcv 1.9.4",
-    "RLT source 398603bb415dc5a9293396cee6145eeeb446b291",
+    "RLT asserted source revision 398603bb415dc5a9293396cee6145eeeb446b291",
     "RLT 6.1.1",
+    "RLT loaded native library RLT.dll",
+    "Platform x86_64-w64-mingw32",
     "RLT DLL MD5 c32d2002806b3b74dfad23fb82c40e4d"
   ],
   "reference": "corrected local RLT source and mgcv 1.9-4",

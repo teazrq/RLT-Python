@@ -13,8 +13,10 @@ and pipeline interfaces.
 
 The shared tree algorithms come from RLT source version 6.1.1, with
 R/Rcpp interfaces replaced by pybind11. Python has its own array and
-estimator APIs. Its optional smoothed confidence bands use a separate
-spline approximation rather than R's `mgcv` smoother.
+estimator APIs. Smoothed confidence bands use a narrow Python implementation
+of R's `mgcv` 1.9-4 tensor smoother, with no R process needed during prediction.
+The [comparison guide](reference/r-parity.md) describes tested numerical
+agreement and random-stream limits.
 
 ---
 

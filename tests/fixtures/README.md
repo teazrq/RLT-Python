@@ -5,9 +5,26 @@ The frozen oracle uses corrected RLT revision
 `c32d2002806b3b74dfad23fb82c40e4d`, R 4.6.1 and mgcv 1.9-4.
 Ordinary Python tests read the NPZ and JSON files and require no R runtime.
 
-To regenerate, use existing shared R and Python installations. Set
-`RLT_REFERENCE_LIBRARY` to the corrected shared R library and
-`RLT_RSCRIPT` to the shared Rscript executable. Create an output directory
+To regenerate, first verify the intended R source checkout against the
+pinned revision and file hashes, then install that checkout into an
+existing shared R library:
+
+```text
+python tools/check_r_reference.py <RLT-source-checkout>
+R CMD INSTALL --library=<shared-R-library> <RLT-source-checkout>
+```
+
+Set `RLT_REFERENCE_LIBRARY` to that shared R library, `RLT_RSCRIPT` to the
+shared Rscript executable, and `RLT_REFERENCE_REVISION` to the revision
+printed by `python tools/check_r_reference.py --revision`. The revision
+is an explicit assertion that this installed package came from the
+verified checkout. It is not inferred from a DLL or package version.
+The generator requires it to match `tools/r-reference.json`. It prints
+the actual loaded RLT native-library path in the generation log and
+records its basename, platform, and MD5 in the manifest on Windows,
+Linux, or macOS.
+
+Use the shared Python and R installations, create an output directory,
 and run these three commands from the repository root:
 
 ```text
@@ -29,6 +46,14 @@ envelope for the three affected cases. Fixed-parameter solves, basis and
 penalties retain stricter numerical checks. Numerical rank, iterations,
 stopping gradient and GCV checks also remain in place. The twelve holdout
 definitions were frozen before this acceptance rule was chosen.
+
+Optimized and fixed-parameter surfaces share a `1e-11` absolute covariance
+tolerance after scaling by the largest raw covariance entry, alongside
+the `1e-10` relative tolerance. Large smoothing parameters can make the
+augmented penalized system poorly conditioned even with a well-conditioned
+design. Automatic selection cannot reasonably be required to beat the
+precision of its fixed-parameter solver. The measured three-case rounding
+envelopes are added only to the automatic-selection gate.
 
 The Gaussian-draw fixture checks the same postprocessing function used by
 production band simulation. Equal R/Python integer seeds do not imply

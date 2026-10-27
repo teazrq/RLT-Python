@@ -15,6 +15,7 @@ from rlt._surv_smoother import _GaussianGCV, _tensor_setup, smooth_covariance
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
+SMOOTHER_CASES = json.loads((FIXTURES / "survival_smoother_mgcv_1_9_4.json").read_text())["cases"]
 
 
 def _prediction(n=2, t=6):
@@ -129,61 +130,67 @@ def test_frozen_R_cr_tensor_design_penalties_and_fixed_smoothing_parameters():
                                oracle["fixed_sp_surface"], rtol=1e-10, atol=1e-12)
 
 
-def test_default_optimizer_matches_frozen_R_over_rank_scale_and_singular_cases():
+@pytest.mark.parametrize("record", SMOOTHER_CASES, ids=lambda record: record["id"])
+def test_default_optimizer_matches_frozen_R_over_rank_scale_and_singular_cases(record):
     oracle, manifest = _oracle()
     controls = manifest["optimizer_roundoff_controls"]
-    for record in manifest["cases"]:
-        assert record["status"] == "ok", record
-        tag = record["id"]
-        raw = oracle[f"{tag}_raw"]
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            fitted, info = smooth_covariance(raw, int(record["k"]))
-        scale = max(np.max(abs(raw)), np.finfo(float).tiny)
-        # Three near-stationary cases have independently measured same-R
-        # sensitivity to a single ULP in the input, using exact binary doubles.
-        # Use that reference envelope only for automatic parameter selection;
-        # the fixed-parameter solve below keeps its stricter numerical gate.
-        reference = [r for r in controls if r["case"] == tag]
-        surface_roundoff = max((r["optimized_surface_delta_scaled"] for r in reference), default=0)
-        np.testing.assert_allclose(fitted / scale, oracle[f"{tag}_smooth"] / scale,
-                                   rtol=1e-10, atol=1e-12+surface_roundoff, err_msg=tag)
-        assert np.isfinite(info["sp"]).all() and np.all(info["sp"] > 0), tag
-        # Constant/zero responses have flat GCV: the surface is identified,
-        # but smoothing parameters and their EDF can depend on rounding.
-        if tag not in ("zero", "constant"):
-            edf_R = float(record["edf"])
-            edf_roundoff = max((abs(r["edf"]-edf_R) for r in reference), default=0)
-            assert info["edf"] == pytest.approx(edf_R, rel=1e-9, abs=1e-9+edf_roundoff), tag
-            assert info["rank"] == int(record["rank"]), tag
-            assert info["iterations"] == int(record["iterations"]), tag
-            if not tag.startswith("toeplitz_n3_"):
-                np.testing.assert_allclose(info["sp"], [float(record["sp1"]), float(record["sp2"])],
-                                           rtol=2e-6, atol=1e-13, err_msg=tag)
-            score_R = float(record["gcv"]) / scale ** 2
-            score_budget = 64*info["rank"]*np.finfo(float).eps*(1+abs(score_R))
-            assert abs(info["gcv"] / scale ** 2-score_R) <= score_budget, tag
-            # The RMS gradient is the previous-step gradient used by magic's
-            # stopping rule, rather than a newly evaluated final gradient.
-            assert info["rms_gradient"] == pytest.approx(
-                float(record["rms_gradient"]), rel=1e-4, abs=1e-10*scale**2), tag
+    assert record["status"] == "ok", record
+    tag = record["id"]
+    raw = oracle[f"{tag}_raw"]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        fitted, info = smooth_covariance(raw, int(record["k"]))
+    scale = max(np.max(abs(raw)), np.finfo(float).tiny)
+    # Three near-stationary cases have independently measured same-R
+    # sensitivity to a single ULP in the input, using exact binary doubles.
+    # Add the reference envelope only for automatic parameter selection.
+    # The 1e-11 covariance floor is shared with the fixed-parameter solve:
+    # strong smoothing can condition the augmented system poorly even when
+    # the unpenalized design is well conditioned. Selection cannot be
+    # required to beat the numerical precision of that same solver.
+    reference = [r for r in controls if r["case"] == tag]
+    surface_roundoff = max((r["optimized_surface_delta_scaled"] for r in reference), default=0)
+    context = (f"{tag}; sp={info['sp']}; EDF={info['edf']}; GCV={info['gcv']}; "
+               f"rank={info['rank']}; iterations={info['iterations']}; "
+               f"R sp=({record['sp1']}, {record['sp2']}); R GCV={record['gcv']}")
+    np.testing.assert_allclose(fitted / scale, oracle[f"{tag}_smooth"] / scale,
+                               rtol=1e-10, atol=1e-11+surface_roundoff, err_msg=context)
+    assert np.isfinite(info["sp"]).all() and np.all(info["sp"] > 0), context
+    # Constant/zero responses have flat GCV: the surface is identified,
+    # but smoothing parameters and their EDF can depend on rounding.
+    if tag not in ("zero", "constant"):
+        edf_R = float(record["edf"])
+        edf_roundoff = max((abs(r["edf"]-edf_R) for r in reference), default=0)
+        assert info["edf"] == pytest.approx(edf_R, rel=1e-9, abs=1e-9+edf_roundoff), context
+        assert info["rank"] == int(record["rank"]), context
+        assert info["iterations"] == int(record["iterations"]), context
+        if not tag.startswith("toeplitz_n3_"):
+            np.testing.assert_allclose(info["sp"], [float(record["sp1"]), float(record["sp2"])],
+                                       rtol=2e-6, atol=1e-13, err_msg=context)
+        score_R = float(record["gcv"]) / scale ** 2
+        score_budget = 64*info["rank"]*np.finfo(float).eps*(1+abs(score_R))
+        assert abs(info["gcv"] / scale ** 2-score_R) <= score_budget, context
+        # The RMS gradient is the previous-step gradient used by magic's
+        # stopping rule, rather than a newly evaluated final gradient.
+        assert info["rms_gradient"] == pytest.approx(
+            float(record["rms_gradient"]), rel=1e-4, abs=1e-10*scale**2), context
 
 
-def test_full_corpus_at_R_selected_parameters_keeps_strict_surface_gate():
-    oracle, manifest = _oracle()
-    for record in manifest["cases"]:
-        tag = record["id"]
-        raw = oracle[f"{tag}_raw"]
-        n = len(raw)
-        k = min(max(int(record["k"]), 3), n)
-        setup = _tensor_setup(n, k)
-        problem = _GaussianGCV(raw, setup)
-        state = problem.fit(np.log([float(record["sp1"]), float(record["sp2"])]))
-        coefficients = setup[1] @ state["coefficients"]
-        fit = setup[0] @ coefficients.reshape(k, k) @ setup[0].T
-        scale = max(np.max(abs(raw)), np.finfo(float).tiny)
-        np.testing.assert_allclose((fit+fit.T)/2/scale, oracle[f"{tag}_smooth"]/scale,
-                                   rtol=1e-10, atol=1e-11, err_msg=tag)
+@pytest.mark.parametrize("record", SMOOTHER_CASES, ids=lambda record: record["id"])
+def test_full_corpus_at_R_selected_parameters_keeps_strict_surface_gate(record):
+    oracle, _ = _oracle()
+    tag = record["id"]
+    raw = oracle[f"{tag}_raw"]
+    n = len(raw)
+    k = min(max(int(record["k"]), 3), n)
+    setup = _tensor_setup(n, k)
+    problem = _GaussianGCV(raw, setup)
+    state = problem.fit(np.log([float(record["sp1"]), float(record["sp2"])]))
+    coefficients = setup[1] @ state["coefficients"]
+    fit = setup[0] @ coefficients.reshape(k, k) @ setup[0].T
+    scale = max(np.max(abs(raw)), np.finfo(float).tiny)
+    np.testing.assert_allclose((fit+fit.T)/2/scale, oracle[f"{tag}_smooth"]/scale,
+                               rtol=1e-10, atol=1e-11, err_msg=tag)
 
 
 def test_optimizer_roundoff_envelopes_have_binary_reread_and_ULP_controls():
@@ -199,25 +206,25 @@ def test_optimizer_roundoff_envelopes_have_binary_reread_and_ULP_controls():
             assert row["fixed_sp_surface_delta_scaled"] <= 32*np.finfo(float).eps
 
 
-def test_smoothed_final_scales_match_frozen_R_postprocessing():
-    oracle, manifest = _oracle()
-    for record in manifest["cases"]:
-        tag = record["id"]
-        raw = oracle[f"{tag}_raw"]
-        n = len(raw)
-        prediction = {"CHF": np.linspace(.1, 1, n)[None], "Cov": raw[None],
-                      "timepoints": np.arange(1., n+1) ** 3}
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", RuntimeWarning)
-            band = get_surv_band(prediction, approach="smoothed", k_rank=int(record["k"]), nsim=5)
-        expected = oracle[f"{tag}_band_sd"]
-        actual = band["diagnostics"][0]["diag_sd"]
-        for j, field in enumerate(("raw_sd", "smoothK_sd", "final_sd", "resid_sd"), 1):
-            # Positive-spectrum residuals can be at roundoff scale. Their
-            # square roots need an absolute tolerance proportional to sqrt(eps).
-            scale = max(np.max(abs(raw)), np.finfo(float).eps) ** .5
-            np.testing.assert_allclose(actual[field] / scale, expected[:, j] / scale,
-                                       rtol=1e-8, atol=3e-7, err_msg=f"{tag}/{field}")
+@pytest.mark.parametrize("record", SMOOTHER_CASES, ids=lambda record: record["id"])
+def test_smoothed_final_scales_match_frozen_R_postprocessing(record):
+    oracle, _ = _oracle()
+    tag = record["id"]
+    raw = oracle[f"{tag}_raw"]
+    n = len(raw)
+    prediction = {"CHF": np.linspace(.1, 1, n)[None], "Cov": raw[None],
+                  "timepoints": np.arange(1., n+1) ** 3}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        band = get_surv_band(prediction, approach="smoothed", k_rank=int(record["k"]), nsim=5)
+    expected = oracle[f"{tag}_band_sd"]
+    actual = band["diagnostics"][0]["diag_sd"]
+    for j, field in enumerate(("raw_sd", "smoothK_sd", "final_sd", "resid_sd"), 1):
+        # Positive-spectrum residuals can be at roundoff scale. Their
+        # square roots need an absolute tolerance proportional to sqrt(eps).
+        scale = max(np.max(abs(raw)), np.finfo(float).eps) ** .5
+        np.testing.assert_allclose(actual[field] / scale, expected[:, j] / scale,
+                                   rtol=1e-8, atol=3e-7, err_msg=f"{tag}/{field}")
 
 
 def test_GCV_gradient_and_hessian_agree_with_finite_differences():

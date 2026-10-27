@@ -4,11 +4,31 @@
 args <- commandArgs(trailingOnly=TRUE)
 stopifnot(length(args)==1L, dir.exists(args[1]))
 out <- args[1]
+script <- grep('^--file=',commandArgs(),value=TRUE)
+stopifnot(length(script)==1L)
+root <- dirname(dirname(dirname(normalizePath(sub('^--file=','',script),mustWork=TRUE))))
+manifest <- readLines(file.path(root,'tools','r-reference.json'),warn=FALSE)
+manifest_string <- function(name) {
+  pattern <- paste0('^\\s*"',name,'"\\s*:\\s*"([^"]+)".*$')
+  line <- grep(pattern,manifest,value=TRUE)
+  stopifnot(length(line)==1L)
+  sub(pattern,'\\1',line)
+}
+reference_revision <- Sys.getenv('RLT_REFERENCE_REVISION')
+if (!nzchar(reference_revision) || reference_revision!=manifest_string('revision'))
+  stop('Set RLT_REFERENCE_REVISION to the pinned tools/r-reference.json revision after verifying and installing that checkout')
 reference_library <- Sys.getenv('RLT_REFERENCE_LIBRARY')
 if (nzchar(reference_library)) .libPaths(c(reference_library,.libPaths()))
 library(mgcv)
 stopifnot(as.character(packageVersion('mgcv'))=='1.9.4')
 library(RLT)
+stopifnot(as.character(packageVersion('RLT'))==manifest_string('package_version'))
+reference_dll <- getLoadedDLLs()[['RLT']][['path']]
+stopifnot(length(reference_dll)==1L, file.exists(reference_dll))
+reference_dll <- normalizePath(reference_dll,mustWork=TRUE)
+reference_md5 <- unname(tools::md5sum(reference_dll))
+stopifnot(length(reference_md5)==1L, !is.na(reference_md5))
+message('Loaded RLT native library: ',reference_dll)
 write_numeric <- function(x,file) {
   # write.csv writes about 15 significant digits. A 17-digit round trip is
   # necessary when a GCV step compares scores at machine precision.
@@ -103,5 +123,7 @@ write_numeric(draws,file.path(out,'mc_draws.csv'))
 write_numeric(t(widths),file.path(out,'mc_widths.csv'))
 write_numeric(sd,file.path(out,'mc_scales.csv'))
 writeLines(c(paste('R',getRversion()),paste('mgcv',packageVersion('mgcv')),
-  'RLT source 398603bb415dc5a9293396cee6145eeeb446b291',
-  paste('RLT',packageVersion('RLT')),paste('RLT DLL MD5',unname(tools::md5sum(file.path(find.package('RLT'),'libs/x64/RLT.dll'))))),file.path(out,'versions.txt'))
+  paste('RLT asserted source revision',reference_revision),
+  paste('RLT',packageVersion('RLT')),paste('RLT loaded native library',basename(reference_dll)),
+  paste('Platform',R.version$platform),
+  paste('RLT DLL MD5',reference_md5)),file.path(out,'versions.txt'))
