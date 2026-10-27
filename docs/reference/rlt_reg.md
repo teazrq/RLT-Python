@@ -72,6 +72,24 @@ RLT_reg(
 | `verbose` | int | 0 | Verbosity level. |
 | `random_state` | int, Generator, RandomState, or None | None | Explicit native master seed; None draws from NumPy's global RNG. Supplied RNG objects advance. Repeat with the same data, effective parameters, and numerical environment. |
 
+### Variance settings
+
+For all three estimators, fitting with `var_mode` adjusts the sampling settings
+after parameter defaults are resolved:
+
+- `"matched"` uses paired half-samples without replacement, setting
+  `resample_prob=0.5` and `resample_replace=False`. An odd tree count is reduced
+  to the preceding even count; at least two trees are required.
+- `"ij"` and `"jack"` set `resample_replace=True` and keep the resolved
+  `resample_prob`. These modes estimate prediction variance, not variable
+  importance variance.
+
+All active variance modes retain sampling counts and change `importance="none"`
+to `"distribute"`. An explicitly selected `"permute"` or `"distribute"` method
+is retained. These modes supply their own sampling scheme and ignore a supplied
+`resample_preset`. Inspect `model.params_` after fitting for the effective
+settings.
+
 ### Embedded-model controls
 
 Embedded forests rank predictors within the current node. With

@@ -102,7 +102,7 @@ with zero total weight raises an error.
 `var_mode="matched"` uses paired half-samples without replacement. It
 enforces `resample_prob=0.5` and `resample_replace=False`, reduces an odd
 tree count to the preceding even number, and requires at least two trees.
-The effective count is `model.params_.ntrees`. See [`RLT_reg`](rlt_reg.md)
+The effective count is `model.params_.ntrees`. See [`RLT_reg`](rlt_reg.md#variance-settings)
 for the shared variance-mode and observation-tracking settings.
 
 ## Methods

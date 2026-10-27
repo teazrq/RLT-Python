@@ -4,7 +4,7 @@ Historical port plan, retained for provenance. The October 2026 revision
 synchronizes the shared core with corrected RLT 6.1.1 sources and repairs
 the Python API and survival prediction differences. See
 [Comparing Python and R](docs/reference/r-parity.md) for the current
-contract and the remaining intentional smoother difference. The old
+contract, numerical tolerances, and random-stream differences. The old
 verification counts and RNG notes below describe the original port.
 
 **Source:** R package `RLT` v6.0.2 (`/home/tez/RLT`, CRAN `teazrq/RLT`)
