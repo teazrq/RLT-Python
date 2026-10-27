@@ -1,261 +1,94 @@
 # RLT for Python
 
-[![CI](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml)
-[![Docs](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml)
-[![PyPI](https://img.shields.io/pypi/v/rlt-forests.svg)](https://pypi.org/project/rlt-forests/)
+Fit random forests for continuous responses, class labels, and right-censored
+survival times with a scikit-learn-style interface. `rlt` brings the tree
+algorithms of the [RLT R package](https://github.com/teazrq/RLT) to Python.
 
-`rlt` is the Python port of the [RLT R package](https://cran.r-project.org/package=RLT)
-(Reinforcement Learning Trees, Zhu, Zeng & Kosorok, and successors) —
-random forests with **embedded-model variable selection** and
-**linear-combination splits**, for regression, classification, and survival
-analysis. Its estimators use scikit-learn's `fit`, `predict`, parameter,
-and pipeline interfaces.
+The default forest uses one variable at each split. Optional **reinforcement**
+uses embedded forests to guide variable selection. **Linear-combination splits**
+split along a direction formed from several predictors and can be used with or
+without reinforcement.
 
-The shared tree algorithms come from RLT source version 6.1.1, with
-R/Rcpp interfaces replaced by pybind11. Python has its own array and
-estimator APIs. Smoothed confidence bands use a narrow Python implementation
-of R's `mgcv` 1.9-4 tensor smoother, with no R process needed during prediction.
-The [comparison guide](reference/r-parity.md) describes tested numerical
-agreement and random-stream limits.
+[Get started: install and fit a forest](tutorials/get-started.md){ .md-button .md-button--primary }
 
----
+## Install from source
 
-## Features
+These guides describe the GitHub source version, **0.3.0**. Install it from
+[the source repository](https://github.com/teazrq/RLT-Python), using the
+[installation instructions](tutorials/get-started.md#install-the-rlt-package)
+for shared Python dependencies and system libraries. The standard build targets
+Linux; Windows and macOS need additional compiler and linker configuration.
 
-<div class="grid cards" markdown>
+## Predict a continuous response
 
--   :material-tree:{ .lg .middle } **Three forest families**
+After installation, fit on 160 simulated observations and predict the 40 held
+out before fitting. The response depends on the first two predictors plus noise.
 
-    ---
+```python
+import numpy as np
+from rlt import RLT_reg
 
-    `RLT_reg`, `RLT_cla`, and `RLT_surv` cover regression, classification,
-    and right-censored survival analysis — all with the same sklearn-style
-    `fit` / `predict` interface.
+rng = np.random.default_rng(1)
+X = rng.normal(size=(200, 6))
+y = X[:, 0] - X[:, 1] + rng.normal(size=200)
 
-    [:octicons-arrow-right-24: Tutorials](tutorials/regression-tutorial.md)
+model = RLT_reg(
+    n_estimators=100, mtry=3, nsplit=0,
+    resample_replace=True, resample_prob=0.8,
+    random_state=1, n_jobs=1,
+).fit(X[:160], y[:160])
+pred = model.predict(X[160:])
 
--   :material-brain:{ .lg .middle } **Reinforcement learning trees**
-
-    ---
-
-    Embedded random-forest pre-screening at each node selects which variables
-    to consider, and splits can be **linear combinations** of several
-    variables (`linear_comb > 1`) instead of axis-aligned.
-
-    [:octicons-arrow-right-24: Linear combinations](articles/linear-combinations.md)
-
--   :material-chart-line:{ .lg .middle } **Variance estimation & bands**
-
-    ---
-
-    Matched-sample U-statistic, infinitesimal jackknife, and jackknife
-    variances for predictions; simultaneous confidence bands for survival
-    curves via `get_surv_band()`.
-
-    [:octicons-arrow-right-24: Confidence bands](articles/confidence-interval.md)
-
--   :material-scale-balance:{ .lg .middle } **Variable importance**
-
-    ---
-
-    Permutation importance and distributed-assignment importance, computed
-    out-of-bag during the fit.
-
-    [:octicons-arrow-right-24: Variable importance](articles/variable-importance.md)
-
--   :material-graph-outline:{ .lg .middle } **Forest similarity kernel**
-
-    ---
-
-    Terminal-node co-occurrence counts between any two sets of points —
-    the random-forest kernel useful for smoothing, representation learning,
-    and covariate-distance tasks.
-
-    [:octicons-arrow-right-24: Forest kernel](articles/feature-kernel.md)
-
--   :material-magnify-expand:{ .lg .middle } **Full tree inspection**
-
-    ---
-
-    Every tree's split variables, split values, loadings, node weights, and
-    node predictions are exposed as numpy arrays via `get_one_tree(i)`.
-
-    [:octicons-arrow-right-24: Single tree](articles/feature-single-tree.md)
-
-</div>
-
-## Installation
-
-The 0.3.0 alignment updates documented here are available from the GitHub
-source. This change does not publish a new PyPI release. To use these APIs,
-build the current source with shared Python dependencies:
-
-```bash
-# system deps: armadillo, lapack, blas, openmp (e.g. apt install
-# libarmadillo-dev liblapack-dev libopenblas-dev)
-python -m pip install setuptools wheel pybind11
-git clone https://github.com/teazrq/RLT-Python
-cd RLT-Python
-python -m pip install --no-build-isolation .
+print(f"OOB MSE: {model.oob_error_:.3f}")
+print(f"Test MSE: {np.mean((pred - y[160:]) ** 2):.3f}")
 ```
 
-See [Get Started](tutorials/get-started.md) for the Linux system packages,
-platform notes, and optional pandas category encoding. Numeric arrays can
-continue to use zero-based category codes with `categorical_features`;
-labeled pandas inputs retain fitted category dictionaries.
+```text
+OOB MSE: 1.401
+Test MSE: 1.847
+```
 
-## Quickstart
+Both numbers are mean squared prediction errors; smaller is better. Each
+out-of-bag (OOB) prediction uses only trees that omitted that training row.
+Test MSE evaluates the separate 40-row test set. Their difference here is one
+small-sample result, not evidence that one evaluation method is generally better.
+The [first-analysis walkthrough](tutorials/get-started.md#fit-and-evaluate-a-regression-forest)
+also shows individual predictions and explains the fitting controls.
 
-=== "Regression"
+## Choose your analysis
 
-    ```python
-    import numpy as np
-    from rlt import RLT_reg
+| Task | Start here | Main result |
+|---|---|---|
+| Predict a continuous response | [Regression](tutorials/regression-tutorial.md) | Predicted response means and OOB/test MSE |
+| Predict a class | [Classification](tutorials/classification-tutorial.md) | Class labels and probabilities in `classes_` order |
+| Model a censored event time | [Survival](tutorials/survival-tutorial.md) | Conditional survival curves, cumulative hazards, and OOB concordance error |
 
-    rng = np.random.default_rng(1)
-    X = rng.normal(size=(100, 10))
-    y = X[:, 0] + X[:, 1] + rng.normal(size=100)
+## Understand and inspect a fitted forest
 
-    model = RLT_reg(n_estimators=500, importance="permute", random_state=42)
-    model.fit(X, y)                # sklearn API
-    pred = model.predict(X)
-    model.oob_error_               # out-of-bag MSE
-    model.feature_importances_
-    ```
+- [Variable importance](articles/variable-importance.md): measure the change in
+  OOB predictive loss when a variable is perturbed.
+- [Linear combinations](articles/linear-combinations.md): allow up to several
+  predictors in a split direction.
+- [Survival confidence bands](articles/confidence-interval.md): construct nominal
+  simultaneous bands separately for each target curve over its returned time grid.
+- [Forest kernels](articles/feature-kernel.md): inspect which observations share
+  terminal nodes, with separate ordinary, training, and OOB calculations.
+- [Individual trees](articles/feature-single-tree.md): read named splits and
+  terminal predictions with `tree_summary()`.
+- [Model workflows](articles/model-workflows.md): work with labeled data, inspect
+  OOB availability, request prediction uncertainty, and save fitted models.
 
-=== "Classification"
+See [reproducibility](articles/feature-seed.md) to control simulation and forest
+randomness, or [comparing Python and R](reference/r-parity.md) for numerical
+agreement, source matching, and interface differences.
 
-    ```python
-    import numpy as np
-    from rlt import RLT_cla
+## Citation and license
 
-    rng = np.random.default_rng(1)
-    X = rng.normal(size=(100, 10))
-    y = rng.binomial(1, 1 / (1 + np.exp(-(2 * X[:, 0]))))  # signal in X0
+For reinforcement learning trees, cite Zhu, R., Zeng, D., and Kosorok, M. R.
+(2015), [*Reinforcement Learning Trees*](https://doi.org/10.1080/01621459.2015.1036994),
+*Journal of the American Statistical Association*, 110(512), 1770-1784.
 
-    model = RLT_cla(n_estimators=500, random_state=42)
-    model.fit(X, y)                # string labels fine
-    prob = model.predict_proba(X)  # (n, n_classes)
-    labels = model.predict(X)
-    ```
+RLT for Python is distributed under GPL (>= 3), inherited from the R package.
 
-=== "Survival"
-
-    ```python
-    import numpy as np
-    from rlt import RLT_surv
-
-    rng = np.random.default_rng(1)
-    X = rng.normal(size=(200, 5))
-    t_event = rng.exponential(1 / np.exp(X[:, 0]))
-    t_censor = rng.uniform(0, 3, size=200)
-
-    y = np.empty(200, dtype=[("event", "?"), ("time", float)])  # sksurv convention
-    y["event"] = t_event <= t_censor
-    y["time"] = np.minimum(t_event, t_censor)
-
-    model = RLT_surv(split_rule="logrank", random_state=42)
-    model.fit(X, y)
-    S = model.predict_survival_function(X)   # (n, T) survival curves
-    model.score(X, y)                        # Harrell's c-index
-    ```
-
-=== "Reinforcement learning trees"
-
-    ```python
-    import numpy as np
-    from rlt import RLT_reg
-
-    rng = np.random.default_rng(1)
-    X = rng.normal(size=(100, 10))
-    y = X[:, 0] + X[:, 1] + rng.normal(size=100)
-
-    # embedded-model variable selection + linear combination splits
-    model = RLT_reg(
-        n_estimators=100,          # R default under reinforcement
-        linear_comb=2,             # combine 2 variables per split
-        linear_comb_method="sir",  # or naive / lm / pca
-        reinforcement=True,        # embedded random-forest pre-screening
-        random_state=42,
-    )
-    model.fit(X, y)
-    ```
-
-    On linear-signal DGPs, `linear_comb=2` roughly halves the OOB error of
-    the axis-aligned forest (see `tests/`).
-
-=== "Variance & confidence bands"
-
-    ```python
-    import numpy as np
-    from rlt import RLT_reg, RLT_surv, get_surv_band
-
-    rng = np.random.default_rng(1)
-    X = rng.normal(size=(100, 5))
-    y = X[:, 0] + rng.normal(size=100)
-
-    model = RLT_reg(n_estimators=2000, var_mode="matched", random_state=1)
-    model.fit(X, y)
-    pred, var = model.predict_var(X)
-
-    t_event = rng.exponential(1 / np.exp(X[:, 0]))
-    t_censor = rng.uniform(0, 3, size=100)
-    ys = np.empty(100, dtype=[("event", "?"), ("time", float)])
-    ys["event"] = t_event <= t_censor
-    ys["time"] = np.minimum(t_event, t_censor)
-
-    smodel = RLT_surv(n_estimators=2000, var_mode="matched", random_state=1)
-    smodel.fit(X, ys)
-    S, cov = smodel.predict_var(X)
-
-    band = get_surv_band(smodel, X[:3], alpha=0.05, approach="smoothed")
-    band["lower"], band["upper"]  # simultaneous survival bands
-    ```
-
-=== "Forest similarity kernel"
-
-    ```python
-    import numpy as np
-    from rlt import RLT_reg
-
-    rng = np.random.default_rng(1)
-    X = rng.normal(size=(100, 5))
-    y = X[:, 0] + X[:, 1] + rng.normal(size=100)
-    X_test = rng.normal(size=(10, 5))
-
-    model = RLT_reg(n_estimators=500, resample_track=True, random_state=1)
-    model.fit(X, y)
-    K = model.forest_kernel(X_test)               # (n, n) co-occurrence counts
-    Kc = model.forest_kernel(X_test, X)           # cross kernel
-    Kt = model.forest_kernel(X_test, X, vs_train=True)  # needs resample_track=True
-
-    # OOB self-kernel (RLT >= 6.1.0): co-occurrence only from trees where
-    # both observations were excluded from fitting that tree
-    oob = model.forest_kernel(X, oob=True)
-    oob["Kernel"]  # (n, n) normalized co-occurrence in [0, 1]
-    ```
-
-## Where to go next
-
-- The [Get Started](tutorials/get-started.md) page covers installation details.
-- Tutorials: [regression](tutorials/regression-tutorial.md),
-  [classification](tutorials/classification-tutorial.md),
-  [survival](tutorials/survival-tutorial.md).
-- Feature articles: [variable importance](articles/variable-importance.md),
-  [linear combinations](articles/linear-combinations.md),
-  [survival confidence bands](articles/confidence-interval.md),
-  [forest kernel](articles/feature-kernel.md),
-  [single tree](articles/feature-single-tree.md), and
-  [seeds & reproducibility](articles/feature-seed.md).
-- The [API reference](reference/rlt_reg.md) documents every public class and
-  function.
-
-## Citation
-
-If you use RLT methods, please cite the corresponding R-side papers:
-Zhu, R., Zeng, D., & Kosorok, M. R. (2015) *Reinforcement Learning Trees*,
-JASA; and follow-ups on variance estimation and survival bands.
-
-## License
-
-GPL (>= 3), inherited from the RLT R package.
+[![CI](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml)
+[![Docs](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/docs.yml)

@@ -67,16 +67,20 @@ parameters.
 ## Keep labels when fitting data frames
 
 Pandas is optional. Unordered categorical columns use categorical splits.
-Ordered categoricals and string columns use numerical ranks, matching R's
-encoding. Prediction reuses the training dictionary and matches named
-columns, so changing their order does not change their meaning.
+For string labels that denote nominal groups, use an unordered
+`pd.Categorical` so splits can separate subsets of levels. Plain string
+columns instead use numerical ranks in sorted label order, which can impose
+an arbitrary ordering on nominal groups. Use an ordered categorical when
+its declared order is meaningful. Prediction reuses the training dictionary
+and matches named columns, so changing their order does not change their
+meaning.
 
 ```python
 import pandas as pd
 
 frame = pd.DataFrame({
     "group": pd.Categorical(np.where(X[:, 0] > 0, "high", "low"),
-                            categories=["low", "high", "unused"]),
+                            categories=["low", "high", "unused"], ordered=False),
     "score": X[:, 1],
 })
 labels = pd.Categorical(y, categories=["positive", "negative"])

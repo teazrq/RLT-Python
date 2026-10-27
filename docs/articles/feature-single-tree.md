@@ -92,8 +92,13 @@ does not change predictions from the fitted model.
 | `SplitVar` | Variable index split at this node; -1 for terminal nodes |
 | `SplitValue` | Numerical threshold or encoded categorical partition; use `tree_summary` to decode it |
 | `LeftNode` / `RightNode` | Child node indices |
-| `NodeWeight` | Number of in-bag observations at the node, including repeats |
+| `NodeWeight` | In-bag count without `sample_weight`; normalized observation-weight mass otherwise, including resampling repeats |
 | `NodeAve` | Terminal-node response mean; internal-node entries are placeholders |
+
+When `sample_weight` is supplied, fitting normalizes these weights to sum
+to one across the training data. `NodeWeight` sums that normalized mass
+over the in-bag copies reaching the node; it is not an observation count.
+This example is unweighted, so the summary's `n` column contains counts.
 
 ```python
 n_nodes = len(tree["SplitVar"])
@@ -145,9 +150,10 @@ node  13 | n =    4 | leaf | mean = 0.825
 ```
 
 For linear-combination forests, the loadings of every internal split live
-in `fit.forest_["SplitLoad"][tree_id]`: one row of `linear_comb`
-coefficients per node, with split loadings at internal nodes aligned with
-the `SplitVar` rows:
+in `fit.forest_["SplitLoad"][tree_id]`, aligned with the `SplitVar` rows.
+Each row has `linear_comb` coefficient slots, but a split can use fewer
+predictors; unused slots are zero. Categorical splits use a single
+predictor.
 
 ```python
 fit_lc = RLT_reg(n_estimators=50, mtry=3, nsplit=3,

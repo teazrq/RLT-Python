@@ -1,14 +1,14 @@
 # Survival Confidence Band
 
 This page demonstrates how to construct simultaneous confidence bands for
-conditional survival curves predicted by `rlt`, the Python port of the RLT
-R package's survival confidence band article. The example uses the smoothed
-covariance approach in `get_surv_band()`.
+conditional survival curves at chosen predictor values. The example uses
+the smoothed covariance approach in `get_surv_band()` and simulated data
+whose true curves are known.
 
 Two details matter for interpretation:
 
-- Target points should be inside the observed predictor domain, especially for the important variables.
-- The displayed time range should avoid the far tail where very few training observations remain at risk.
+- Check that target predictor values are represented in the training data, especially for the important variables, to limit extrapolation.
+- Inspect how many observations remain at risk over time. The far tail has less support when few observations remain under follow-up without an event.
 
 ## Data
 
@@ -62,15 +62,18 @@ array([[-0.384, -0.385],
 
 ## Fit and Predict with Variance
 
-We use `var_mode="matched"` for variance estimation. This prepares
-covariance estimates on the cumulative hazard scale, which is the scale
-used by the confidence-band calculation.
+We use `var_mode="matched"` to estimate covariance of the predicted
+cumulative hazard over time, which is the scale used by the band
+calculation. The 1,000 trees form 500 matched pairs using half-samples
+without replacement. Matched mode enforces these sampling settings and
+reduces an odd requested tree count to the preceding even count; at least
+two trees are required. The settings are explicit below.
 
 ```python
 fit = RLT_surv(
     n_estimators=1000, mtry=min(p, 10), min_samples_leaf=5,
     nsplit=3,
-    resample_prob=0.8, resample_replace=False,
+    resample_prob=0.5, resample_replace=False,
     importance="none", verbose=0,
     n_jobs=1,
     var_mode="matched",
@@ -81,6 +84,7 @@ fit.fit(X, y)
 
 prediction = fit.predict_details(testX, var_est=True)
 S, cov = prediction["Survival"], prediction["Cov"]
+S_reference = np.exp(-prediction["CHF"])
 ```
 
 ## Choose a Display Range
@@ -92,9 +96,9 @@ criterion establishing sufficient support. The band is constructed over
 the full returned grid, even when the plot shows only part of it.
 
 ```python
-risk_set = np.array([np.sum(time >= t) for t in fit.timepoints_])
+risk_set = np.array([np.sum(time >= t) for t in prediction["timepoints"]])
 plot_time_max = 2
-plot_id = fit.timepoints_ <= plot_time_max
+plot_id = prediction["timepoints"] <= plot_time_max
 
 if not plot_id.any():
     plot_id = np.zeros_like(plot_id, dtype=bool)
@@ -115,20 +119,23 @@ Number of plotted timepoints: 136
 
 With `alpha=0.05`, `get_surv_band()` constructs a nominal 95% simultaneous
 band separately for each target's conditional survival curve over the
-returned grid. It does not provide joint coverage across targets or a
-prediction interval for a target's event time.
+returned grid. It does not provide joint coverage across targets,
+continuous-time coverage between grid points, or a prediction interval
+for a target's event time.
 
-The reference curve is `exp(-CHF)`. It equals `S` for this ordinary forest.
+The reference curve is `S_reference = np.exp(-prediction["CHF"])`.
+It equals `S` for this ordinary forest.
 For a linear combination forest, returned survival is instead the mean
 of tree product-limit curves, whose variation is not directly estimated
 by this CHF-based band.
 
-The smoothed approach approximates the covariance to choose marginal
-standardizing scales; simulations still use the supplied CHF covariance.
-The Python calculation follows the Gaussian natural cubic tensor smoother
-and GCV search used by R's `mgcv` 1.9-4 on grid indices. It requires no R
-runtime. Frozen reference fixtures compare its intermediate matrices,
-optimized covariance surfaces, and final marginal scales.
+The smoothed approach uses a low-rank covariance approximation and a
+residual correction to form marginal standardizing scales. Here
+`k_rank=10` allows up to ten components in that approximation. Gaussian
+simulations retain the original supplied CHF covariance; `nsim` controls
+the number used to estimate the simultaneous critical value. See
+[`get_surv_band`](../reference/get_surv_band.md) for smoothing and
+numerical implementation details.
 
 ```python
 from rlt import get_surv_band
@@ -143,6 +150,8 @@ recomputing forest predictions. The model convenience call
 `get_surv_band(fit, testX, ...)` remains available. A tracking-only fit can
 use `var_mode="IJ"` or `"jack"` in that call, or in `predict_details`,
 when the fitted resampling counts support the requested method.
+The plot below retains the raw reference curve and band arrays; only the
+displayed probability axis is restricted to `[0, 1]`.
 
 ```python
 import matplotlib.pyplot as plt
@@ -152,11 +161,11 @@ titles = ["Interior lower-risk target", "Interior higher-risk target"]
 
 for i, ax in enumerate(axes):
     tp = prediction["timepoints"][plot_id]
-    S_i = np.clip(S[i, plot_id], 0, 1)
+    S_i = S_reference[i, plot_id]
     truth = np.exp(-xlink(testX)[i] * tp)
 
-    b_lower = np.clip(SurvBand["lower"][i][plot_id], 0, 1)
-    b_upper = np.clip(SurvBand["upper"][i][plot_id], 0, 1)
+    b_lower = SurvBand["lower"][i, plot_id]
+    b_upper = SurvBand["upper"][i, plot_id]
 
     ax.fill_between(tp, b_lower, b_upper, color="#3b82f6", alpha=0.25,
                     label="Simultaneous 95% Band")
@@ -172,6 +181,18 @@ axes[1].legend(loc="lower left", fontsize=8)
 plt.tight_layout()
 plt.show()
 ```
+
+[![Survival curves through time 2 for interior lower-risk and higher-risk targets, with black CHF-based estimates, red dashed true curves, and blue shaded nominal 95 percent bands. The higher-risk curve falls faster.](../assets/figures/confidence-interval_00.png)](../assets/figures/confidence-interval_00.png)
+
+Select a figure to view it at full size.
+
+The higher-risk target has larger values of both signal variables, so
+its true survival curve falls faster. In this realization, that true
+curve falls outside the band at some displayed times. A nominal 95%
+simultaneous band need not contain the true curve in every dataset, and
+one realization cannot establish coverage. Each band was constructed on
+the full returned grid, although only the portion through time 2 is
+displayed.
 
 ## Optional Rank Selection
 
@@ -192,5 +213,5 @@ critical value at the cost of runtime. Python and R use different random
 streams, so the same integer seed does not imply identical simulated band
 limits. Smoother diagnostics report its GCV parameters and convergence;
 parameters can be unstable when the GCV objective is flat even if the
-fitted surface is stable. The plotted simulation and cross-language
-numerical checks do not establish the method's statistical coverage.
+fitted surface is stable. Numerical agreement between implementations
+does not establish the method's statistical coverage.

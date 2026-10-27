@@ -27,8 +27,12 @@ trainX, trainY = X[:120], y[:120]
 testX, testY = X[120:], y[120:]
 ```
 
-Fit a regression forest that considers three-variable linear combinations
-at a split.
+Fit a regression forest that considers linear combinations of up to three
+variables at a split. Here `linear_comb_method="sir"` selects sliced inverse
+regression (SIR), which uses the response to estimate a predictor direction.
+The tree then searches for a cutpoint along that direction. With `nsplit=3`,
+it compares three random candidate cutpoints; `nsplit=0` would search all
+available cutpoints.
 
 ```python
 from rlt import RLT_reg
@@ -53,24 +57,32 @@ RLT_reg(linear_comb=3, linear_comb_method='sir', mtry=3, n_estimators=200,
         n_jobs=1, nsplit=3, random_state=3)
 ```
 
+Linear combinations do not require reinforcement. This fit uses the default
+`reinforcement=False`.
+
 ## Prediction
 
 ```python
 test_pred = fit_lc.predict(testX)
 
 print(f"Test MSE: {np.mean((test_pred - testY) ** 2):.4f}")
-print(f"Linear combination size: {fit_lc.linear_comb}")
+print(f"Maximum combination size: {fit_lc.linear_comb}")
 ```
 
 ```
 Test MSE: 0.2817
-Linear combination size: 3
+Maximum combination size: 3
 ```
+
+The held-out mean squared error summarizes prediction error on the 40
+observations excluded from fitting. It describes this simulated dataset and
+fit. The stored combination setting confirms the maximum of three variables,
+not the number used at every split.
 
 ## Method names and integer codes
 
 `linear_comb_method` also accepts the integer method codes used by the R
-package's core — handy when translating R code or tuning over methods
+package's core, which is useful when translating R code or tuning over methods
 programmatically. The names and codes are equivalent:
 
 | Model | Names | Codes |
@@ -97,7 +109,7 @@ np.array_equal(fit_code.predict(testX), fit_lc.predict(testX))  # True
 ```
 
 Like R, an unrecognized method name (or an out-of-range integer) does
-not error: it emits a `UserWarning` and resets to code 1 — `naive` for
+not error: it emits a `UserWarning` and resets to code 1, which is `naive` for
 regression, `lda` for classification, `coxph` for survival:
 
 ```python

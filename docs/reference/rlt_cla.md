@@ -1,9 +1,7 @@
 # RLT_cla
 
-RLT classification forest, a sklearn-compatible estimator porting the RLT R
-package's `RLT(model = "classification")`.
-
-`RLT_cla` grows a random forest of classification trees. Ordinary integer
+`RLT_cla` fits classification forests and returns class labels or
+probabilities through a sklearn-compatible interface. Ordinary integer
 or string label arrays use sorted observed classes. A pandas categorical
 response retains its declared levels and order, including unused levels
 and explicitly categorical numeric labels such as 0.25 and 0.75.
@@ -58,8 +56,12 @@ RLT_cla(
 
 ### Parameters
 
-See [`RLT_reg`](rlt_reg.md) for the shared parameters. The loading method
-has classification-specific choices:
+See [`RLT_reg`](rlt_reg.md) for the shared parameters and the individual
+[embedded-model controls](rlt_reg.md#embedded-model-controls).
+`linear_comb` is a maximum number of predictors per combination, and
+classification uses embedded ranking in sufficiently large nodes even
+when `reinforcement=False`. The loading method has classification-specific
+choices:
 
 | Parameter | Type / values | Default | Description |
 |---|---|---|---|
@@ -81,7 +83,7 @@ has classification-specific choices:
 | `tree_summary(tree=0)` / `print_tree(tree=0)` | dict | Readable splits and terminal class probabilities. |
 | `predict_var(X, var_mode=None, ...)` | `(prob, variance)` | Class probabilities plus their `(n, n_classes)` variance. Requires a fitted variance mode or an explicit compatible prediction-time mode; negative estimates become NaN. |
 | `importance_table()` | `ImportanceTable` | Variable-importance summary (Variable / VI, plus SD / Z / Sig when fitted with `importance != "none"` and `var_mode="matched"`); same as `rlt.importance(model)`. |
-| `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Forest similarity kernel. |
+| `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Leaf-sharing counts, with in-bag-weighted and normalized OOB variants. See [Forest Kernel](../articles/feature-kernel.md) for the original-row requirements of training modes. |
 | `get_one_tree(tree_id)` | dict of ndarrays | Raw arrays of tree `tree_id` (0-indexed). |
 | `score(X, y, sample_weight=None)` | float | Mean accuracy, including declared numeric categories, with optional sample weights. |
 
@@ -114,7 +116,7 @@ y = rng.binomial(1, prob)
 model = RLT_cla(n_estimators=500, importance="permute", random_state=0)
 model.fit(X, y)
 model.predict_proba(X[:3])     # (3, 2)
-model.predict(X[:3])           # e.g. array([1, 0, 1])
+model.predict(X[:3])           # array([0, 0, 0])
 
 # String labels
 y_str = np.array(["neg", "pos"])[y]

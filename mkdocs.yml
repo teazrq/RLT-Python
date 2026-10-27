@@ -1,6 +1,6 @@
 site_name: rlt
 site_description: >-
-  Reinforcement Learning Trees for Python — random forests with embedded-model
+  Reinforcement Learning Trees for Python: random forests with embedded-model
   variable selection and linear-combination splits, for regression,
   classification, and survival analysis.
 site_url: https://teazrq.github.io/RLT-Python/
@@ -55,6 +55,10 @@ markdown_extensions:
   - pymdownx.superfences
   - pymdownx.tabbed:
       alternate_style: true
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js
 
 nav:
   - Home: index.md

@@ -24,7 +24,7 @@ y["time"] = np.minimum(t_event, t_censor)
 model = RLT_surv(split_rule="logrank", random_state=42)
 model.fit(X, y)
 S = model.predict_survival_function(X)   # (n, T) survival curves
-model.score(X, y)                        # Harrell's c-index
+model.score(X, y)                        # fitted-data c-index, not validation
 ```
 
 ## Response format
@@ -87,9 +87,23 @@ survival-specific choices:
 |---|---|---|---|
 | `split_rule` | "logrank", "suplogrank", "coxgrad", or codes 1, 2, 3 | "logrank" | Splitting criterion for survival trees. Integral numeric codes such as 2.0 are also accepted. |
 | `time_grid_size` | int | 0 | Fitting retains every unique failure time. Zero or a size at least as large as the full grid is accepted; smaller positive values are rejected. Use `band_grid_size` when predicting on a reduced grid. |
-| `linear_comb_method` | "default", "coxph", "naive" or code 1 to 2 | "default" | How combination loadings are computed ("coxph" = code 1 is the default). Integral doubles are accepted. Unknown names/out-of-range codes warn and reset to `coxph`; fractional and nonfinite codes are rejected. |
+| `linear_comb_method` | "default", "coxph", "naive" or code 1 to 2 | "default" | Local Cox coefficients (`"coxph"`, code 1, the default) or weighted survival score statistics (`"naive"`, code 2). Integral doubles are accepted. Unknown names/out-of-range codes warn and reset to `coxph`; fractional and nonfinite codes are rejected. |
 | `alpha` | float | 0 | Clamped to `[0, 0.5]` at fit, like R. |
 | `categorical_features` | bool mask / int indices / None | None | See [`RLT_reg`](rlt_reg.md); same behavior for all three estimators. |
+
+`linear_comb=k` allows up to `k` variables in a split direction; some
+splits use fewer. All three survival split rules support observation
+weights. Weighted `logrank` and `suplogrank` account for weights in their
+split-score variance calculation. `sample_weight` must be finite and
+nonnegative with positive total mass, and does not change tree sampling.
+Individual zero weights are allowed, but a sampled outer or embedded tree
+with zero total weight raises an error.
+
+`var_mode="matched"` uses paired half-samples without replacement. It
+enforces `resample_prob=0.5` and `resample_replace=False`, reduces an odd
+tree count to the preceding even number, and requires at least two trees.
+The effective count is `model.params_.ntrees`. See [`RLT_reg`](rlt_reg.md)
+for the shared variance-mode and observation-tracking settings.
 
 ## Methods
 
@@ -131,7 +145,7 @@ not covariance of the returned survival estimate.
 | `oob_hazard_` | `(n, T)` | Out-of-bag hazard increments on the full training failure grid. |
 | `oob_counts_` | `(n,)` | Number of eligible OOB predictions per row; use `oob_details()` to mask unavailable rows. |
 | `oob_error_` | float | One minus concordance using the sum of OOB cumulative hazards over the full grid as risk, restricted to rows with OOB predictions. |
-| `feature_importances_` | `(p,)` | Variable importance (when `importance != "none"`). |
+| `feature_importances_` | `(p,)` | Decrease in OOB concordance after perturbing each variable (when `importance != "none"`), rather than a decrease in the split statistic. |
 | `var_vi_` | `(p,)` | Per-variable variance of the VI estimates (when `importance != "none"` and `var_mode="matched"`). |
 | `obstrack_` | `(n, trees)` | Signed sampling-count matrix, with `trees = params_.ntrees` (when tracked). |
 | `n_features_in_` | int | Number of predictors. |
@@ -153,12 +167,28 @@ y["event"] = t_event <= t_censor
 y["time"] = np.minimum(t_event, t_censor)
 
 # Variance-enabled forest and simultaneous bands
-model = RLT_surv(n_estimators=1000, var_mode="matched", random_state=0)
+model = RLT_surv(n_estimators=1000, var_mode="matched",
+                 resample_prob=0.5, resample_replace=False, random_state=0)
 model.fit(X, y)
-S, cov = model.predict_var(X[:2])
-band = get_surv_band(model, X[:2], alpha=0.05, approach="smoothed")
+
+# Training rows illustrate returned arrays, not predictive validation.
+prediction = model.predict_details(X[:2], var_est=True)
+S, cov = prediction["Survival"], prediction["Cov"]
+reference = np.exp(-prediction["CHF"])
+band = get_surv_band(prediction, alpha=0.05, approach="smoothed")
 band["lower"].shape, band["upper"].shape  # (2, T) each
 ```
+
+The band uses `reference` and CHF covariance. Its nominal coverage is
+specified separately for each target over the saved time grid, with no
+joint guarantee across targets or coverage between grid points. It is
+not a prediction interval for an event time. See
+[`get_surv_band`](get_surv_band.md) for the LC survival distinction.
+
+For LC tree inspection, `tree_summary()` gives readable split directions.
+Raw `SplitVar` and `SplitLoad` arrays from `get_one_tree()` include every
+node. Internal nodes satisfy `SplitVar[:, 0] >= 0`; use that mask for both
+arrays when selecting internal-node coefficients.
 
 ## See also
 

@@ -314,19 +314,24 @@ class _BaseRLT(RLTInspectionMixin, BaseEstimator):
         - ``X2=None``: self-kernel of X1, shape (n1, n1).
         - ``X2`` given, ``vs_train=False``: cross-kernel (n1, n2).
         - ``vs_train=True``: training-process kernel. X2 must be the
-          training data and the forest must have been fitted with
-          ``resample_track=True``; entries weight by inbag counts.
+          original training data in its original row order. Retained
+          sampling counts are required, enabled by ``resample_track=True``
+          or an active ``var_mode`` at fitting; entries weight by inbag counts.
         - ``oob=True``: OOB self-kernel (RLT >= 6.1.0), with co-occurrence
           counted only from trees where both observations are
           out-of-bag. Each contributing tree was fitted without either
-          observation in the pair. Requires
-          ``resample_track=True``, ``X2=None`` and X1 to be the original
-          training data. Returns a dict with keys ``Kernel`` (normalized
+          observation in the pair. Requires retained sampling counts,
+          ``X2=None`` and X1 to be the original
+          training data in its original row order. Returns a dict with
+          keys ``Kernel`` (normalized
           co-occurrence in [0, 1]), ``N`` (both-OOB tree count) and ``C``
           (both-OOB, same-leaf count).
 
-        Without ``oob``, returns integer counts; divide by ``params_.ntrees``
-        for frequencies.
+        Without ``oob``, returns integer counts. For the ordinary self- or
+        cross-kernel, divide by ``params_.ntrees`` for leaf-sharing
+        frequencies in [0, 1]. With ``vs_train=True``, bootstrap repeats can
+        make counts exceed the number of trees. Training modes check row
+        counts but do not verify row identity or order.
         """
         check_is_fitted(self, "forest_")
         from . import _core
@@ -409,15 +414,43 @@ class RLT_reg(RegressorMixin, _BaseRLT):
     var_mode : {"none", "matched", "ij", "jack"}, default="none"
         Variance estimation mode.
     linear_comb : int, default=1
-        Variables combined per split; 1 = axis-aligned, >1 = linear
-        combination splits with embedded variable screening.
+        Maximum predictors per combination, capped at the feature count.
+        One uses axis-aligned splits; larger values select combination
+        splits independently of reinforcement. Regression and
+        classification use embedded ranking at nodes with at least
+        3 * embed_nmin observations and direct screening at smaller nodes.
     linear_comb_method : str, default="default"
         Regression loadings: "sir" (default), "naive", "lm", "pca".
     alpha : float, default=0
         Minimum child-sample proportion, clamped to [0, 0.5].
     reinforcement : bool, default=False
-        Use embedded-model (reinforcement) splitting.
-    embed_* : embedded forest controls (see RLT documentation).
+        Use embedded importance to choose axis-aligned split variables.
+        Combination splitting is selected separately by linear_comb.
+    embed_ntrees : int, default=50
+        Number of trees in each embedded forest.
+    embed_mtry : float, default=0.5
+        Candidates per embedded split: a proportion of available
+        predictors below 1, or a count at least 1.
+    embed_nmin : int, default=5
+        Embedded-tree node-size stopping threshold. Also controls the
+        3 * embed_nmin switch for regression and classification combinations.
+    embed_nsplit : int, default=3
+        Random cut points per embedded candidate; 0 considers all.
+    embed_resample_replace : bool, default=True
+        Whether embedded trees sample with replacement.
+    embed_resample_prob : float, default=0.9
+        Fraction of the current node sampled for each embedded tree.
+    embed_mute : float, default=0
+        Remove low-ranked predictors from descendant candidate sets:
+        a proportion below 1, or a count at least 1. Zero disables muting.
+        Protected predictors are retained.
+    embed_protect : int or None, default=None
+        Maximum top-ranked predictors added to the protected set, subject
+        to embed_threshold, for axis-aligned reinforcement or regression
+        combinations. None uses ceil(log(n)) for training sample size n.
+    embed_threshold : float, default=0.25
+        Importance relative to the best embedded importance required for
+        protection. This does not filter regression combination candidates.
     n_jobs : int, default=-1
         OpenMP threads (-1 or 0 = all cores).
     verbose : int, default=0
@@ -595,6 +628,9 @@ class RLT_cla(ClassifierMixin, _BaseRLT):
 
     linear_comb_method : str, default="default"
         Loadings: "lda" (default), "naive", "random", "logistic".
+    embed_threshold : float, default=0.25
+        In large combination nodes, also screens the candidate combination
+        pool. That qualified pool is protected without an embed_protect cap.
     """
 
     _tree_extra_keys = ()

@@ -1,36 +1,36 @@
 # RLT for Python
 
 [![CI](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml/badge.svg)](https://github.com/teazrq/RLT-Python/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/rlt-forests.svg)](https://pypi.org/project/rlt-forests/)
 
-`rlt` is a Python port of the [RLT R package](https://github.com/teazrq/RLT)
-(Reinforcement Learning Trees, Zhu, Zeng & Kosorok, and successors):
-random forests with **embedded-model variable selection** and
-**linear-combination splits**, for regression, classification, and
-survival analysis. Its estimators use scikit-learn's `fit`, `predict`,
-parameter, and pipeline interfaces.
+Fit random forests for continuous responses, class labels, and right-censored
+survival times with a scikit-learn-style interface. `rlt` brings the tree
+algorithms of the [RLT R package](https://github.com/teazrq/RLT) to Python.
 
-The shared tree algorithms come from RLT source version 6.1.1, with
-R/Rcpp interfaces replaced by pybind11. Python has its own estimator and
-array APIs. Smoothed confidence bands use a narrow Python implementation of
-R's `mgcv` 1.9-4 tensor smoother, with no R process needed during prediction.
-The [comparison guide](https://teazrq.github.io/RLT-Python/reference/r-parity/)
-describes source pinning, tested numerical agreement, and random-stream limits.
+The default forest uses one variable at each split. Optional reinforcement uses
+embedded forests to guide variable selection. Linear-combination splits choose
+a direction formed from several predictors and do not require reinforcement.
+
+Start with the [installation and first-analysis guide](https://teazrq.github.io/RLT-Python/tutorials/get-started/),
+or choose a [modeling tutorial](https://teazrq.github.io/RLT-Python/#choose-your-analysis).
 
 ## Installation
 
-The 0.3.0 alignment updates documented here are available from the GitHub
-source. This change does not publish a new PyPI release. To use these APIs,
-build the current source with shared Python dependencies:
+These guides describe **version 0.3.0 from the GitHub source**. Use a shared
+user-wide or machine-wide Python installation. On Linux, install the system
+libraries and then build the source:
 
 ```bash
-# system deps: armadillo, lapack, blas, openmp (e.g. apt install
-# libarmadillo-dev liblapack-dev libopenblas-dev)
+# Debian/Ubuntu system libraries and C++ compiler
+sudo apt-get install -y libarmadillo-dev liblapack-dev libopenblas-dev libomp-dev g++
 python -m pip install setuptools wheel pybind11
 git clone https://github.com/teazrq/RLT-Python
 cd RLT-Python
 python -m pip install --no-build-isolation .
 ```
+
+Python 3.10 or later is required. The standard build targets Linux; Windows and
+macOS need additional compiler and linker configuration. See the installation
+guide above for verification and optional plotting and pandas dependencies.
 
 ## Quickstart
 
@@ -40,18 +40,29 @@ python -m pip install --no-build-isolation .
 import numpy as np
 from rlt import RLT_reg
 
-rng = np.random.default_rng(42)
+rng = np.random.default_rng(1)
 X = rng.normal(size=(200, 6))
 y_reg = X[:, 0] - X[:, 1] + rng.normal(size=200)
-model = RLT_reg(n_estimators=100, importance="permute", random_state=42)
-model.fit(X, y_reg)
-pred = model.predict(X)
-model.oob_error_               # out-of-bag MSE
-model.feature_importances_
+trainX, testX = X[:160], X[160:]
+model = RLT_reg(
+    n_estimators=100, mtry=3, nsplit=0,
+    resample_replace=True, resample_prob=0.8,
+    random_state=1, n_jobs=1,
+).fit(trainX, y_reg[:160])
+pred = model.predict(testX)
+print(f"OOB MSE: {model.oob_error_:.3f}")
+print(f"Test MSE: {np.mean((pred - y_reg[160:]) ** 2):.3f}")
 ```
 
-These predictions illustrate returned values on training rows. Use the
-stored OOB error or separate held-out data to evaluate prediction accuracy.
+```text
+OOB MSE: 1.401
+Test MSE: 1.847
+```
+
+Both results are mean squared prediction errors, so smaller is better. Each
+OOB prediction uses only trees that omitted that training row; test MSE uses
+40 separate held-out rows. This small example demonstrates evaluation rather
+than establishing a performance advantage.
 
 ### Classification
 
@@ -60,9 +71,15 @@ from rlt import RLT_cla
 
 y_class = np.where(y_reg > 0, "positive", "negative")
 model = RLT_cla(n_estimators=100, random_state=42)
-model.fit(X, y_class)          # string labels are supported
-prob = model.predict_proba(X)  # (n, n_classes)
+model.fit(trainX, y_class[:160])  # string labels are supported
+prob = model.predict_proba(testX)
+print(model.classes_)            # labels in probability-column order
+print(np.round(prob[:3], 3))     # one row per held-out observation
 ```
+
+Each row assigns probabilities to the labels in `model.classes_`. See the
+[classification tutorial](https://teazrq.github.io/RLT-Python/tutorials/classification-tutorial/)
+for decoded predictions and OOB/test accuracy.
 
 ### Survival
 
@@ -76,10 +93,16 @@ y_surv = np.empty(len(X), dtype=[("event", "?"), ("time", float)])
 y_surv["event"] = event_time <= censor_time
 y_surv["time"] = np.minimum(event_time, censor_time)
 model = RLT_surv(n_estimators=100, split_rule="logrank", random_state=42)
-model.fit(X, y_surv)
-S = model.predict_survival_function(X)   # (n, T) survival curves
-model.score(X, y_surv)                   # in-sample concordance, not OOB
+model.fit(trainX, y_surv[:160])
+S = model.predict_survival_function(testX)  # (40, T) survival curves
+timepoints = model.timepoints_             # time coordinates of S's columns
+print(f"Test concordance: {model.score(testX, y_surv[160:]):.3f}")
 ```
+
+`S[i, j]` estimates survival beyond `timepoints[j]` for test row `i`.
+Concordance measures risk ordering among comparable pairs; larger is better.
+The [survival tutorial](https://teazrq.github.io/RLT-Python/tutorials/survival-tutorial/)
+shows and interprets a fitted curve.
 
 ### Reinforcement and linear combination splits
 
@@ -161,7 +184,7 @@ in their original order. Ordinary counts are not normalized prediction weights.
 | `linear_comb_method` | `linear.comb.method` | model-specific | reg: sir/naive/lm/pca; cla: lda/naive/random/logistic; surv: coxph/naive |
 | `reinforcement` | `reinforcement` | False | embedded-model splitting |
 | `split_rule` | `split.rule` | model-specific | surv: logrank/suplogrank/coxgrad |
-| `embed_*` | `param.control$embed.*` | see R docs | embedded forest controls |
+| `embed_*` | `param.control$embed.*` | see [reference](https://teazrq.github.io/RLT-Python/reference/rlt_reg/#embedded-model-controls) | embedded forest controls |
 | `n_jobs` | `ncores` | -1 | OpenMP threads |
 | `random_state` | `seed` | None | Integer forest seed, NumPy RandomState/Generator, or NumPy global RNG when omitted. |
 
@@ -177,6 +200,12 @@ support optional pandas category dictionaries. See [changes](CHANGELOG.md)
 for revised defaults and validation rules.
 
 ## Development
+
+The shared tree algorithms come from the corrected RLT 6.1.1 source, with
+R/Rcpp interfaces replaced by pybind11. Python has its own estimator and array
+APIs. The [comparison guide](https://teazrq.github.io/RLT-Python/reference/r-parity/)
+documents source matching, smoother implementation, numerical agreement, and
+random-stream limits.
 
 ```bash
 python -m pip install --no-build-isolation -e . pytest scikit-learn threadpoolctl
@@ -194,12 +223,21 @@ layer. The parity tests use `Rscript` and an RLT installation in a shared R
 library. Set `RLT_RSCRIPT` if that executable is not on PATH. Compare the
 same source revisions and parameter values in both languages.
 
+For documentation changes, run `python tools/verify_examples.py` and
+`python tools/check_expected_outputs.py` from the checkout. The first command
+saves figures under `build/verify_figs/`. Copy the regenerated PNGs referenced
+by the changed pages into `docs/assets/figures/`, then run
+`python -m mkdocs build --strict` and inspect the pages and figures. Install
+`matplotlib`, `pandas`, `mkdocs`, and `mkdocs-material` in the shared Python
+installation for these checks. The example tools import the checkout;
+installation verification must run separately from outside it.
+
 ## License
 
 GPL (>= 3), inherited from the RLT R package.
 
 ## Citation
 
-If you use RLT methods, please cite the corresponding R-side papers:
-Zhu, R., Zeng, D., & Kosorok, M. R. (2015) *Reinforcement Learning
-Trees*, JASA; and follow-ups on variance estimation and survival bands.
+For reinforcement learning trees, cite Zhu, R., Zeng, D., and Kosorok, M. R.
+(2015), [*Reinforcement Learning Trees*](https://doi.org/10.1080/01621459.2015.1036994),
+*Journal of the American Statistical Association*, 110(512), 1770-1784.

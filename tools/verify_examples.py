@@ -66,7 +66,8 @@ finally:
     figdir = sys.argv[2]
     for i, num in enumerate(plt.get_fignums()):
         plt.figure(num).savefig(os.path.join(
-            figdir, os.path.basename(page)[:-3] + f"_{i:02d}.png"), dpi=80)
+            figdir, os.path.basename(page)[:-3] + f"_{i:02d}.png"),
+            dpi=160, bbox_inches="tight")
 '''
 
 

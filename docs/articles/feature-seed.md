@@ -14,11 +14,13 @@ and the forest's internal resampling (`random_state` on the estimator).
 - If your data are fixed and only modeling randomness matters, only the
   estimator's `random_state` needs to be fixed.
 
-**Prerequisites** — See [Get Started](../tutorials/get-started.md).
+**Prerequisites:** See [Get Started](../tutorials/get-started.md).
 
-## Demonstration — same seed, same results (regression)
+## Demonstration: same forest seed, same results
 
-We run the same pipeline twice with the same seed and compare outputs.
+We simulate one dataset and fit it twice with the same forest seed. This
+holds the training data and test data fixed while checking the forest's
+randomness.
 
 ```python
 import numpy as np
@@ -32,31 +34,26 @@ samplereplace = True
 sampleprob = 0.80
 nsplit = 0
 
-def run_pipeline(seed):
-    """Simulate data and fit a forest, all from one seed."""
-    # Simulate data using this run's seed.
-    rng = np.random.default_rng(seed)
+# Simulate once, independently of the forest seed.
+rng = np.random.default_rng(1)
+trainn = 80
+testn = 20
+n = trainn + testn
+p = 10
+X1 = rng.normal(size=(n, p // 2))
+X2 = (rng.uniform(size=(n, p // 2)) * 3).astype(int)  # integers 0,1,2
+X = np.hstack([X1, X2])
+y = (
+    1
+    + X[:, 1:6].sum(axis=1)
+    + 2 * np.isin(X[:, p // 2], [1, 2])
+    + rng.normal(size=n)
+)
+trainX, trainY = X[:trainn], y[:trainn]
+testX, testY = X[trainn:], y[trainn:]
 
-    # Small dataset (~100 obs)
-    trainn = 80
-    testn = 20
-    n = trainn + testn
-    p = 10
-    X1 = rng.normal(size=(n, p // 2))
-    X2 = (rng.uniform(size=(n, p // 2)) * 3).astype(int)  # integers 0,1,2
-    X = np.hstack([X1, X2])
-
-    y = (
-        1
-        + X[:, 1:6].sum(axis=1)
-        + 2 * np.isin(X[:, p // 2], [1, 2])
-        + rng.normal(size=n)
-    )
-
-    trainX, trainY = X[:trainn], y[:trainn]
-    testX, testY = X[trainn:], y[trainn:]
-
-    # Fit
+def run_forest(seed):
+    """Fit the fixed training data, changing only the forest seed."""
     fit = RLT_reg(
         n_estimators=ntrees,
         mtry=mtry,
@@ -79,10 +76,10 @@ def run_pipeline(seed):
     )
 
 # ---------- Run A (seed = 1) ----------
-mse_oob_A, mse_test_A, pred_A = run_pipeline(1)
+mse_oob_A, mse_test_A, pred_A = run_forest(1)
 
 # ---------- Run B (same seed = 1) ----------
-mse_oob_B, mse_test_B, pred_B = run_pipeline(1)
+mse_oob_B, mse_test_B, pred_B = run_forest(1)
 
 # ---------- Summary for same-seed runs ----------
 print(f"A OOB MSE:  {mse_oob_A:.6f}")
@@ -100,13 +97,15 @@ B test MSE:  4.664737
 Same-seed predictions identical: True
 ```
 
-## Demonstration — different seed, potentially different results
+## Demonstration: change only the forest seed
 
-Now we change the seed and rerun the same pipeline once.
+Now we fit the same training data with a different forest seed and evaluate
+on the same test data. Differences therefore reflect forest randomization,
+rather than a new simulated dataset.
 
 ```python
 # ---------- Run C (seed = 2) ----------
-mse_oob_C, mse_test_C, pred_C = run_pipeline(2)
+mse_oob_C, mse_test_C, pred_C = run_forest(2)
 
 print(f"C OOB MSE:  {mse_oob_C:.6f}")
 print(f"C test MSE:  {mse_test_C:.6f}")
@@ -114,14 +113,14 @@ print(f"Diff-seed predictions equal to Run A: {np.array_equal(pred_C, pred_A)}")
 ```
 
 ```
-C OOB MSE:  2.777294
-C test MSE:  2.199118
+C OOB MSE:  2.473170
+C test MSE:  4.857821
 Diff-seed predictions equal to Run A: False
 ```
 
 ## Tips
 
-- Choose any integer you like for the seed; the specific value doesn't matter—consistency does.
+- Choose an integer seed and record it with the data and model settings.
 - Keep one seeded `np.random.default_rng(...)` near the top of your script to make the whole workflow reproducible.
 - The same pattern works for classification and survival: place the data-simulation seed before model fitting and give each estimator a fixed `random_state`.
 - `random_state` also accepts a NumPy `RandomState` or `Generator` instance; a fresh seed is drawn from it for each forest. Use a separate generator for data simulation.

@@ -19,7 +19,7 @@ PY_RE = re.compile(r"^( {0,8})```python\n(.*?)^\1```", re.DOTALL | re.MULTILINE)
 
 
 def expected_blocks(text):
-    """Map python-block-index -> expected output text (plain fences only)."""
+    """Map python-block-index to expected output in plain or text fences."""
     out = {}
     pos = 0
     idx = 0
@@ -29,13 +29,17 @@ def expected_blocks(text):
     last_was_python = False
     py_i = 0
     for m in fence_re.finditer(text):
+        # A section heading starts a different object, such as an API signature.
+        if re.search(r"^#{1,6} ", text[pos:m.start()], re.MULTILINE):
+            last_was_python = False
+        pos = m.end()
         lang = m.group(2)
         if lang == "python":
             last_was_python = True
             py_i = idx
             idx += 1
         else:
-            if last_was_python and lang == "":
+            if last_was_python and lang in ("", "text"):
                 out[py_i] = m.group(3)
             last_was_python = False
     return out
@@ -66,10 +70,15 @@ def main():
         if not exp:
             continue
         env = dict(os.environ, MPLBACKEND="Agg")
-        r = subprocess.run([sys.executable, runner, path, "/tmp"],
+        env["PYTHONPATH"] = ROOT + os.pathsep + env.get("PYTHONPATH", "")
+        figdir = os.path.join(ROOT, "build", "verify_figs")
+        os.makedirs(figdir, exist_ok=True)
+        r = subprocess.run([sys.executable, runner, path, figdir],
                            capture_output=True, text=True, env=env, cwd=ROOT)
         if r.returncode != 0:
-            print(f"[skip] {rel}: page failed to execute")
+            print(f"[FAIL] {rel}: page failed to execute")
+            print(r.stderr.strip())
+            n_mismatch += 1
             continue
         # actual stdout, normalized: drop matplotlib repr lines and None
         actual_lines = [l for l in r.stdout.splitlines()

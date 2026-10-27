@@ -1,15 +1,14 @@
 # Get Started with rlt
 
-This page helps you install the `rlt` package and points you to the modeling
-tutorials. It is the Python equivalent of the R package's "Get Started"
-vignette, adapted for the current GitHub source and its compiled core.
-Use a shared user-wide or machine-wide Python installation.
+Install `rlt`, fit a regression forest, and evaluate predictions on observations
+held out before fitting. The example also distinguishes an ordinary forest from
+reinforcement and linear-combination splits.
 
 ## Install the rlt package
 
-The 0.3.0 alignment updates documented here are available from the GitHub
-source. This change does not publish a new PyPI release. The source build
-needs Armadillo, LAPACK, BLAS, OpenMP, and a C++17 compiler.
+These guides describe **version 0.3.0 from the GitHub source**. Use a shared
+user-wide or machine-wide Python installation, with Python 3.10 or later.
+The source build needs Armadillo, LAPACK, BLAS, OpenMP, and a C++17 compiler.
 On Debian/Ubuntu, install the shared system libraries with:
 
 ```bash
@@ -27,34 +26,116 @@ cd RLT-Python
 python -m pip install --no-build-isolation .
 ```
 
+The commands above target Linux. See [platform notes](#platform-notes) for
+Windows and macOS. For plotting the examples in the feature articles, install
+`matplotlib` in the same shared Python installation.
+
 ### Verify the installation
+
+Run this from outside the cloned repository to check the installed package:
 
 ```python
 import rlt
 
 print(rlt.__version__)
+print(rlt.__file__)
 ```
 
-A quick smoke test that also exercises the compiled core:
+The version should be `0.3.0`. The path identifies which installation Python
+loaded. Different source revisions can share a version number; record
+`git rev-parse HEAD` in the checkout when you need to reproduce a source build.
+
+## Fit and evaluate a regression forest
+
+We will predict a continuous response from six numeric predictors. The response
+depends on the first two predictors plus independent noise. Reserve 40 rows for
+evaluation and use the other 160 to fit the forest:
 
 ```python
 import numpy as np
 from rlt import RLT_reg
 
-rng = np.random.default_rng(0)
-X = rng.normal(size=(60, 5))
-y = X[:, 0] + rng.normal(size=60)
+rng = np.random.default_rng(1)
+X = rng.normal(size=(200, 6))
+y = X[:, 0] - X[:, 1] + rng.normal(size=200)
 
-model = RLT_reg(n_estimators=100, random_state=0)
-model.fit(X, y)
-print(f"OOB error: {model.oob_error_:.3f}")
+trainX, trainY = X[:160], y[:160]
+testX, testY = X[160:], y[160:]
 ```
+
+The default forest uses one variable per split. Here `mtry=3` samples three
+candidate variables at each node, and `nsplit=0` searches all available
+cutpoints for those candidates. Each tree makes 128 draws with replacement
+from the training set. We use 100 trees for this short example and fix
+`random_state` to control fitting randomness.
+
+```python
+settings = dict(
+    n_estimators=100, mtry=3, nsplit=0,
+    resample_replace=True, resample_prob=0.8,
+    random_state=1, n_jobs=1,
+)
+model = RLT_reg(**settings).fit(trainX, trainY)
+pred = model.predict(testX)
+
+print(f"OOB MSE: {model.oob_error_:.3f}")
+print(f"Test MSE: {np.mean((pred - testY) ** 2):.3f}")
+print("Observed  Predicted")
+for observed, predicted in zip(testY[:5], pred[:5]):
+    print(f"{observed:8.2f}  {predicted:9.2f}")
+```
+
+```text
+OOB MSE: 1.401
+Test MSE: 1.847
+Observed  Predicted
+    1.47       0.78
+    3.20       0.73
+    0.50      -0.20
+    2.96       2.88
+   -0.29       0.25
+```
+
+The predictions estimate the mean response at each row's predictor values;
+individual responses also contain noise. Both errors are mean squared errors
+(MSEs), so smaller values indicate more accurate predictions. Each OOB
+prediction uses only trees that omitted that training observation. Test MSE
+evaluates the 40 separate observations reserved before fitting. These estimates
+can differ in a small sample; this example is not a performance benchmark.
+
+## Try reinforcement or linear-combination splits
+
+Reinforcement fits embedded forests within nodes to guide variable selection.
+Keep the data and outer forest settings fixed while requesting it:
+
+```python
+reinforced = RLT_reg(reinforcement=True, **settings).fit(trainX, trainY)
+reinforced_pred = reinforced.predict(testX)
+```
+
+We explicitly set the tree count in both fits because its default is 500 for
+an ordinary forest and 100 with reinforcement. This example demonstrates the
+control without establishing an accuracy advantage.
+
+Linear-combination splits instead choose a direction formed from up to
+`linear_comb` predictors. They do not require reinforcement:
+
+```python
+combined = RLT_reg(linear_comb=2, **settings).fit(trainX, trainY)
+combined_pred = combined.predict(testX)
+```
+
+The [linear-combination guide](../articles/linear-combinations.md) explains
+direction estimation. The [embedded-model reference](../reference/rlt_reg.md#embedded-model-controls)
+describes variable screening and its controls.
 
 ## Categorical predictors
 
 Pandas is optional. In a pandas data frame, unordered `Categorical` columns
 automatically use categorical splits, preserving declared levels, including
 unused ones. Ordered categoricals and string columns use numerical ranks.
+For nominal labels with no meaningful order, use an unordered pandas
+`Categorical` column so splits can group levels rather than threshold their ranks.
 Prediction matches named columns and reuses the fitted label dictionary;
 unknown labels and missing values are rejected.
 Install pandas in your shared Python installation with

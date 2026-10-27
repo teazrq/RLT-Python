@@ -1,11 +1,8 @@
 # RLT_reg
 
-RLT regression forest, a sklearn-compatible estimator porting the RLT R
-package's `RLT(model = "regression")`.
-
-`RLT_reg` grows a random forest of regression trees with optional
-embedded-model (reinforcement) variable selection and linear-combination
-splits, using the same OpenMP/Armadillo C++ core as the R package.
+`RLT_reg` fits regression forests with axis-aligned or linear-combination
+splits. Embedded forests can rank predictors for reinforcement and
+linear-combination splitting. The estimator follows the sklearn interface.
 
 ```python
 import numpy as np
@@ -67,14 +64,40 @@ RLT_reg(
 | `resample_track` | bool | False | Retain sampling counts for training/OOB kernels and prediction-time IJ/jack. Active variance modes also retain counts. |
 | `var_mode` | "none", "matched", "ij", "jack" | "none" | Variance-estimation mode. |
 | `categorical_features` | bool mask (length p), int indices, or None | None | Nominal-column override. None infers unordered pandas categoricals. Ordered categoricals and string columns retain rank dictionaries. Explicit numeric nominal columns use zero-based integer codes `0..k-1`; nominal predictors support at most 53 levels. |
-| `linear_comb` | int | 1 | Variables combined per split; 1 = axis-aligned; >1 = linear-combination splits with embedded variable screening. Reinforcement remains a separate option. |
+| `linear_comb` | int | 1 | Maximum predictors per combination, capped at `p`; 1 = axis-aligned. A combination split may use fewer predictors. Values above 1 select combination splitting independently of `reinforcement`. |
 | `linear_comb_method` | "default", "sir", "naive", "lm", "pca" or code 1 to 4 | "default" | How combination loadings are computed ("sir" = code 4 is the regression default). Integral doubles are accepted. Unknown names/out-of-range codes warn and reset to `naive`; fractional and nonfinite codes are rejected. |
 | `alpha` | float | 0 | Minimum child proportion used in split searches, clamped to `[0, 0.5]` at fit. |
-| `reinforcement` | bool | False | Use embedded-model (reinforcement) splitting. |
-| `embed_*` | various | see signature | Embedded forest controls (`embed_ntrees`, `embed_mtry`, `embed_nmin`, `embed_nsplit`, `embed_resample_replace`, `embed_resample_prob`, `embed_mute`, `embed_protect`, `embed_threshold`). |
+| `reinforcement` | bool | False | Use embedded importance to choose axis-aligned split variables. See the interaction with `linear_comb` below. |
 | `n_jobs` | int | -1 | OpenMP threads (-1 or 0 = all cores). |
 | `verbose` | int | 0 | Verbosity level. |
 | `random_state` | int, Generator, RandomState, or None | None | Explicit native master seed; None draws from NumPy's global RNG. Supplied RNG objects advance. Repeat with the same data, effective parameters, and numerical environment. |
+
+### Embedded-model controls
+
+Embedded forests rank predictors within the current node. With
+`linear_comb=1`, `reinforcement=True` selects this ranking for split-variable
+selection. With `linear_comb>1`, regression and classification use embedded
+ranking in nodes with at least `3 * embed_nmin` observations, even when
+`reinforcement=False`; smaller nodes use direct screening. Survival
+combination splits screen `mtry` candidates without an embedded forest.
+Setting an `embed_*` parameter alone does not enable either splitting mode.
+
+The following controls are shared by the estimators. Here `n` is the total
+training sample size and `p` is the number of predictors. Proportions for
+embedded sampling and candidate selection refer to the current node and
+its available predictors.
+
+| Parameter | Type | Default | Meaning |
+|---|---|---|---|
+| `embed_ntrees` | int | 50 | Number of trees in each embedded forest, with a minimum of 1. |
+| `embed_mtry` | float | 0.5 | Candidates per embedded split: a proportion of available predictors below 1, or a count at least 1. The resulting count is truncated to an integer. Values are clamped to `[0, p]`. |
+| `embed_nmin` | int | 5 | Embedded-tree node-size stopping threshold, with a minimum of 1. Nodes with at most this many observations stop; child nodes can be smaller. Also sets the `3 * embed_nmin` switch described above. |
+| `embed_nsplit` | int | 3 | Random cut points per candidate in the embedded forest; 0 considers all cut points. Values are clamped to be nonnegative. |
+| `embed_resample_replace` | bool | True | Whether each embedded tree samples with replacement. |
+| `embed_resample_prob` | float | 0.9 | Fraction of the current node's observations sampled for each embedded tree, clamped to `[0, 0.99]`. |
+| `embed_mute` | float | 0 | Requested removal of low-ranked predictors from descendant candidate sets: a proportion below 1, or a count at least 1. Zero disables muting; protected predictors are retained, so fewer may be removed. Values are clamped to `[0, p]`. |
+| `embed_protect` | int or None | None | Maximum number of top-ranked predictors added to the protected set for axis-aligned reinforcement or regression combinations, subject to `embed_threshold`. None uses `ceil(log(n))`, with the natural logarithm. Explicit values are clamped to `[0, p]`; a positive value is required for reinforcement or combination splits. Classification combinations instead protect their threshold-qualified candidate pool. |
+| `embed_threshold` | float | 0.25 | Importance cutoff relative to the best embedded importance, clamped to `[0, 1]`. It controls entry into the protected set and also screens classification combination candidates in large nodes. It does not filter regression combination candidates. |
 
 ## Methods
 
@@ -88,7 +111,7 @@ RLT_reg(
 | `oob_details()` | dict | OOB predictions, counts, and availability mask. |
 | `tree_summary(tree=0)` / `print_tree(tree=0)` | dict | Readable node depths, named splits, weights, and terminal predictions. |
 | `importance_table()` | `ImportanceTable` | Variable-importance summary (Variable / VI, plus SD / Z / Sig when fitted with `importance != "none"` and `var_mode="matched"`); same as `rlt.importance(model)`. |
-| `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Terminal-node co-occurrence counts; OOB mode includes normalized values and eligibility counts. See [Forest Kernel](../articles/feature-kernel.md). |
+| `forest_kernel(X1, X2=None, vs_train=False, oob=False)` | integer ndarray, or dict with `oob=True` | Leaf-sharing counts; `vs_train=True` includes training in-bag multiplicities, while OOB mode returns pairwise normalized values and eligibility counts. Training modes require original training rows in their original order. See [Forest Kernel](../articles/feature-kernel.md). |
 | `get_one_tree(tree_id)` | dict of ndarrays | Raw arrays of tree `tree_id` (0-indexed). |
 | `score(X, y)` | float | Returns R² (sklearn convention). |
 
@@ -124,7 +147,7 @@ y = X[:, 0] + X[:, 1] + rng.normal(size=100)
 m = RLT_reg(n_estimators=500, random_state=0).fit(X, y)
 m.oob_error_
 
-# Reinforcement learning trees with 2-variable linear-combination splits
+# Reinforcement learning trees with combinations of up to 2 variables
 m2 = RLT_reg(
     n_estimators=100,
     linear_comb=2,

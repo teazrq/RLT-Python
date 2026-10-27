@@ -3,7 +3,8 @@
 Nominal simultaneous bands for the conditional survival curve at each
 query point, using a saved survival prediction or a fitted
 [`RLT_surv`](rlt_surv.md). Coverage
-is specified separately for each curve over the returned time grid.
+is specified separately for each curve over the returned time grid,
+without joint coverage across targets or coverage between grid points.
 These are not prediction intervals for an individual's event time.
 
 The reference curve is `exp(-CHF)`, and the covariance is on the CHF
@@ -24,11 +25,13 @@ y = np.empty(n, dtype=[("event", "?"), ("time", float)])
 y["event"] = t_event <= t_censor
 y["time"] = np.minimum(t_event, t_censor)
 
-model = RLT_surv(n_estimators=1000, var_mode="matched", random_state=42)
+model = RLT_surv(n_estimators=1000, var_mode="matched",
+                 resample_prob=0.5, resample_replace=False, random_state=42)
 model.fit(X, y)
 
-X_query = X[:3]
+X_query = X[:3]  # training rows illustrate the API, not validation
 prediction = model.predict_details(X_query, var_est=True)
+reference = np.exp(-prediction["CHF"])
 band = get_surv_band(prediction, i=0, alpha=0.05, approach="smoothed")
 band["lower"], band["upper"]  # (n, T) band limits
 ```
@@ -135,17 +138,20 @@ y = np.empty(n, dtype=[("event", "?"), ("time", float)])
 y["event"] = t_event <= t_censor
 y["time"] = np.minimum(t_event, t_censor)
 
-model = RLT_surv(n_estimators=1000, var_mode="matched", random_state=0)
+model = RLT_surv(n_estimators=1000, var_mode="matched",
+                 resample_prob=0.5, resample_replace=False, random_state=0)
 model.fit(X, y)
 
 # Naive band for the first subject
-X_query = X[:3]
-band_naive = get_surv_band(model, X_query, i=1, alpha=0.05,
+X_query = X[:3]  # illustration using training rows
+prediction = model.predict_details(X_query, var_est=True)
+band_naive = get_surv_band(prediction, i=1, alpha=0.05,
                            approach="naive", nsim=5000)
 
 # Smoothed band with rank chosen by eigenvalue proportion
-prediction = model.predict_details(X_query, var_est=True, band_grid_size=20)
-band_smooth = get_surv_band(prediction, i=0, alpha=[0.05, 0.10],
+prediction_reduced = model.predict_details(X_query, var_est=True,
+                                            band_grid_size=20)
+band_smooth = get_surv_band(prediction_reduced, i=0, alpha=[0.05, 0.10],
                             approach="smoothed", nsim=5000,
                             k_mode="proportion", k_prop=0.95)
 
@@ -161,6 +167,11 @@ A saved dictionary uses arrays with exact axes: `CHF` is `(n, T)`,
 their dimensions and finite values, preserves the stored time vector,
 and does not modify the input arrays or recompute forest predictions.
 Select the grid and covariance mode before caching the result.
+
+The returned limits are raw calculations and can extend beyond the
+probability range. Keep these arrays when inspecting results; use an
+axis limit such as `plt.ylim(0, 1)` for display. Restricting the plotted
+range does not change the time grid used to construct the band.
 
 ## See also
 
