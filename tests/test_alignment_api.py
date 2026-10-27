@@ -344,11 +344,19 @@ def test_float_categorical_score_preserves_target_and_weight_validation():
         fitted.score(X, np.column_stack([y, y]))
     with pytest.raises(ValueError, match="inconsistent numbers of samples"):
         fitted.score(X, y, sample_weight=np.ones(len(X) - 1))
-    # sklearn/NumPy versions differ in the exception type for 2D weights.
-    with pytest.raises((ValueError, TypeError)):
-        fitted.score(X, y, sample_weight=np.ones((len(X), 2)))
-    with pytest.raises(ValueError):
-        fitted.score(X, y, sample_weight=np.full(len(X), np.nan))
+    # Weight validation belongs to sklearn: releases differ in the exception
+    # type for 2D weights and whether NaN weights raise or return NaN.
+    from sklearn.metrics import accuracy_score
+
+    for weights in (np.ones((len(X), 2)), np.full(len(X), np.nan)):
+        try:
+            expected = accuracy_score(np.asarray(y) == .75, fitted.predict(X) == .75,
+                                      sample_weight=weights)
+        except (ValueError, TypeError) as error:
+            with pytest.raises(type(error)):
+                fitted.score(X, y, sample_weight=weights)
+        else:
+            np.testing.assert_equal(fitted.score(X, y, sample_weight=weights), expected)
     for dtype in (complex, object):
         truth = np.asarray(y, dtype=dtype).copy()
         truth[0] = .25 + 1j
