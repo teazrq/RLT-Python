@@ -82,11 +82,24 @@ See [reproducibility](articles/feature-seed.md) to control simulation and forest
 randomness, or [comparing Python and R](reference/r-parity.md) for numerical
 agreement, source matching, and interface differences.
 
-## Citation and license
+## Citations and license
 
-For reinforcement learning trees, cite Zhu, R., Zeng, D., and Kosorok, M. R.
-(2015), [*Reinforcement Learning Trees*](https://doi.org/10.1080/01621459.2015.1036994),
-*Journal of the American Statistical Association*, 110(512), 1770-1784.
+Cite the papers for the methods used in your analysis:
+
+- **Reinforcement learning trees:** Zhu, R., Zeng, D., and Kosorok, M. R.
+  (2015). [*Reinforcement Learning Trees*](https://doi.org/10.1080/01621459.2015.1036994).
+  *Journal of the American Statistical Association*, 110(512), 1770-1784.
+- **Matched-sample variance estimation:** Xu, T., Zhu, R., and Shao, X.
+  (2024). [*On variance estimation of random forests with Infinite-order U-statistics*](https://doi.org/10.1214/24-EJS2247).
+  *Electronic Journal of Statistics*, 18(1), 2135-2207.
+- **Survival confidence bands:** Formentini, S. E., Liang, W., and Zhu, R.
+  (2022). [*Confidence Band Estimation for Survival Random Forests*](https://arxiv.org/abs/2204.12038).
+  *arXiv preprint*, arXiv:2204.12038.
+
+The survival paper develops the cumulative-hazard covariance and Gaussian
+simulation framework for the bands. See the
+[`get_surv_band` reference](reference/get_surv_band.md)
+for the current smoothing and covariance handling.
 
 RLT for Python is distributed under GPL (>= 3), inherited from the R package.
 

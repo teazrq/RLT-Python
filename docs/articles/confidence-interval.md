@@ -5,6 +5,12 @@ conditional survival curves at chosen predictor values. The example uses
 the smoothed covariance approach in `get_surv_band()` and simulated data
 whose true curves are known.
 
+The cumulative-hazard covariance and Gaussian simulation framework for
+these bands is developed in
+[Formentini, Liang, and Zhu (2022)](https://arxiv.org/abs/2204.12038).
+The [`get_surv_band` reference](../reference/get_surv_band.md#approaches)
+describes the current smoothing and covariance handling.
+
 Two details matter for interpretation:
 
 - Check that target predictor values are represented in the training data, especially for the important variables, to limit extrapolation.
@@ -68,6 +74,9 @@ calculation. The 1,000 trees form 500 matched pairs using half-samples
 without replacement. Matched mode enforces these sampling settings and
 reduces an odd requested tree count to the preceding even count; at least
 two trees are required. The settings are explicit below.
+
+For the matched-sample variance framework, see
+[Xu, Zhu, and Shao (2024)](https://doi.org/10.1214/24-EJS2247).
 
 ```python
 fit = RLT_surv(

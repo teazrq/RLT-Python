@@ -12,6 +12,12 @@ scale. For linear combination forests, the returned survival estimate is
 the mean of tree product-limit curves; this band does not directly
 estimate uncertainty in that different estimator.
 
+For the matched-sample cumulative-hazard covariance and Gaussian simulation
+framework for survival bands, cite
+[Formentini, Liang, and Zhu (2022), *Confidence Band Estimation for Survival Random Forests*](https://arxiv.org/abs/2204.12038).
+The current smoothing and covariance handling are described under
+[Approaches](#approaches).
+
 ```python
 import numpy as np
 from rlt import RLT_surv, get_surv_band

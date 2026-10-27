@@ -189,6 +189,9 @@ Fitting with `var_mode="matched"` and either importance option also estimates
 the variance of each VI estimate. These estimates help assess uncertainty in
 the fitted importance values.
 
+The matched-sample variance framework is described by
+[Xu, Zhu, and Shao (2024)](https://doi.org/10.1214/24-EJS2247).
+
 ```python
 fit_vi = RLT_reg(
     n_estimators=ntrees,

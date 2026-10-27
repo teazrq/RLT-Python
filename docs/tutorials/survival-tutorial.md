@@ -259,7 +259,7 @@ OOB concordance; they do not imply a protective effect.
 `rlt` supports three variance estimation strategies for survival
 predictions:
 
-- **`"matched"`**: matched-sample U-statistic decomposition using paired half-samples without replacement and an even number of trees.
+- **`"matched"`**: matched-sample U-statistic decomposition using paired half-samples without replacement and an even number of trees. See [Xu, Zhu, and Shao (2024)](https://doi.org/10.1214/24-EJS2247) for the variance estimation framework.
 - **`"ij"`**: infinitesimal jackknife.
 - **`"jack"`**: jackknife-after-bootstrap variance.
 
@@ -289,6 +289,12 @@ small fitting examples above; 1,000 trees is an illustration, not a
 coverage guarantee.
 
 ## Confidence bands with `get_surv_band()`
+
+The cumulative-hazard covariance and Gaussian simulation framework for
+survival bands is developed in
+[Formentini, Liang, and Zhu (2022)](https://arxiv.org/abs/2204.12038).
+See the [`get_surv_band` reference](../reference/get_surv_band.md#approaches)
+for the current smoothing and covariance handling.
 
 With `alpha=0.05`, `get_surv_band()` constructs a nominal 95% simultaneous
 band for each target's conditional survival curve over the returned time
