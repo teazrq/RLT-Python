@@ -1,0 +1,1881 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Reinforcement Learning Trees for Python: random forests with embedded-model variable selection and linear-combination splits, for regression, classification, and survival analysis.">
+      
+      
+      
+        <link rel="canonical" href="https://teazrq.github.io/RLT-Python/reference/rlt_reg/">
+      
+      
+        <link rel="prev" href="../../articles/feature-seed/">
+      
+      
+        <link rel="next" href="../rlt_cla/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.8.0">
+    
+    
+      
+        <title>RLT_reg - rlt</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.57a0d79d.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.fb2fffe2.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rlt_reg" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="rlt" class="md-header__button md-logo" aria-label="rlt" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            rlt
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              RLT_reg
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/teazrq/RLT-Python" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    teazrq/RLT-Python
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/get-started/" class="md-tabs__link">
+          
+  
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../articles/model-workflows/" class="md-tabs__link">
+          
+  
+  
+  Articles
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="./" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="https://teazrq.github.io/RLT/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  R version
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="rlt" class="md-nav__button md-logo" aria-label="rlt" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    rlt
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/teazrq/RLT-Python" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    teazrq/RLT-Python
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Tutorials
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/get-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Get Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/regression-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Regression
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/classification-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Classification
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorials/survival-tutorial/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Survival
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Articles
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Articles
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/model-workflows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Workflows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/variable-importance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Variable Importance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/linear-combinations/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linear Combinations
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/confidence-interval/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Survival Confidence Bands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/feature-kernel/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forest Kernel
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/feature-single-tree/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Single Tree
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../articles/feature-seed/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Seeds & Reproducibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT_reg
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT_reg
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#constructor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constructor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Constructor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#variance-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variance settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embedded-model-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embedded-model controls
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fitted-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fitted attributes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rlt_cla/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT_cla
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rlt_surv/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    RLT_surv
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../get_surv_band/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    get_surv_band
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../r-parity/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Comparing Python and R
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../alignment-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Functionality and Tests
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://teazrq.github.io/RLT/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    R version
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#constructor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Constructor
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Constructor">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#variance-settings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Variance settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#embedded-model-controls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Embedded-model controls
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#methods" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Methods
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fitted-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fitted attributes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#see-also" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        See also
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+  <nav class="md-path" aria-label="Navigation" >
+    <ol class="md-path__list">
+      
+        
+  
+  
+    <li class="md-path__item">
+      <a href="../.." class="md-path__link">
+        
+  <span class="md-ellipsis">
+    Home
+  </span>
+
+      </a>
+    </li>
+  
+
+      
+      
+        
+  
+  
+    
+    
+      <li class="md-path__item">
+        <a href="./" class="md-path__link">
+          
+  <span class="md-ellipsis">
+    Reference
+  </span>
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ol>
+  </nav>
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="rlt_reg">RLT_reg<a class="headerlink" href="#rlt_reg" title="Permanent link">&para;</a></h1>
+<p><code>RLT_reg</code> fits regression forests with axis-aligned or linear-combination
+splits. Embedded forests can rank predictors for reinforcement and
+linear-combination splitting. The estimator follows the sklearn interface.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">rlt</span><span class="w"> </span><span class="kn">import</span> <span class="n">RLT_reg</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">X</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">y</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">X</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">model</span> <span class="o">=</span> <span class="n">RLT_reg</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">42</span><span class="p">)</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">pred</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="constructor">Constructor<a class="headerlink" href="#constructor" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">RLT_reg</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">n_estimators</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">mtry</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    <span class="n">min_samples_leaf</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="n">nsplit</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">resample_replace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    <span class="n">resample_prob</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>    <span class="n">importance</span><span class="o">=</span><span class="s2">"none"</span><span class="p">,</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>    <span class="n">resample_track</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>    <span class="n">var_mode</span><span class="o">=</span><span class="s2">"none"</span><span class="p">,</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>    <span class="n">categorical_features</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a>    <span class="n">linear_comb</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a>    <span class="n">linear_comb_method</span><span class="o">=</span><span class="s2">"default"</span><span class="p">,</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a>    <span class="n">alpha</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a>    <span class="n">reinforcement</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a>    <span class="n">embed_ntrees</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+<a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a>    <span class="n">embed_mtry</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+<a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>    <span class="n">embed_nmin</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+<a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a>    <span class="n">embed_nsplit</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+<a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a>    <span class="n">embed_resample_replace</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a>    <span class="n">embed_resample_prob</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span>
+<a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>    <span class="n">embed_mute</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a>    <span class="n">embed_protect</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a>    <span class="n">embed_threshold</span><span class="o">=</span><span class="mf">0.25</span><span class="p">,</span>
+<a id="__codelineno-1-25" name="__codelineno-1-25" href="#__codelineno-1-25"></a>    <span class="n">n_jobs</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-1-26" name="__codelineno-1-26" href="#__codelineno-1-26"></a>    <span class="n">verbose</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-1-27" name="__codelineno-1-27" href="#__codelineno-1-27"></a>    <span class="n">random_state</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-1-28" name="__codelineno-1-28" href="#__codelineno-1-28"></a><span class="p">)</span>
+</code></pre></div>
+<h3 id="parameters">Parameters<a class="headerlink" href="#parameters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type / values</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>n_estimators</code></td>
+<td>int or None</td>
+<td>None</td>
+<td>Effective count is 100 with reinforcement, 500 otherwise, matching R.</td>
+</tr>
+<tr>
+<td><code>mtry</code></td>
+<td>int or None</td>
+<td>None</td>
+<td>Variables considered per split; None → max(1, p // 2).</td>
+</tr>
+<tr>
+<td><code>min_samples_leaf</code></td>
+<td>int</td>
+<td>5</td>
+<td>Node-size stopping threshold (<code>nmin</code>): nodes with at most this many observations are not split; child nodes may be smaller.</td>
+</tr>
+<tr>
+<td><code>nsplit</code></td>
+<td>int</td>
+<td>0</td>
+<td>Random cut points per variable; 0 = consider all (best split).</td>
+</tr>
+<tr>
+<td><code>resample_replace</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Resample with replacement (bootstrap).</td>
+</tr>
+<tr>
+<td><code>resample_prob</code></td>
+<td>float or None</td>
+<td>None</td>
+<td>Resampling proportion; None → 1.0 if replace else 0.8.</td>
+</tr>
+<tr>
+<td><code>importance</code></td>
+<td>"none", "permute", "distribute"</td>
+<td>"none"</td>
+<td>Variable-importance strategy.</td>
+</tr>
+<tr>
+<td><code>resample_track</code></td>
+<td>bool</td>
+<td>False</td>
+<td>Retain sampling counts for training/OOB kernels and prediction-time IJ/jack. Active variance modes also retain counts.</td>
+</tr>
+<tr>
+<td><code>var_mode</code></td>
+<td>"none", "matched", "ij", "jack"</td>
+<td>"none"</td>
+<td>Variance-estimation mode.</td>
+</tr>
+<tr>
+<td><code>categorical_features</code></td>
+<td>bool mask (length p), int indices, or None</td>
+<td>None</td>
+<td>Nominal-column override. None infers unordered pandas categoricals. Ordered categoricals and string columns retain rank dictionaries. Explicit numeric nominal columns use zero-based integer codes <code>0..k-1</code>; nominal predictors support at most 53 levels.</td>
+</tr>
+<tr>
+<td><code>linear_comb</code></td>
+<td>int</td>
+<td>1</td>
+<td>Maximum predictors per combination, capped at <code>p</code>; 1 = axis-aligned. A combination split may use fewer predictors. Values above 1 select combination splitting independently of <code>reinforcement</code>.</td>
+</tr>
+<tr>
+<td><code>linear_comb_method</code></td>
+<td>"default", "sir", "naive", "lm", "pca" or code 1 to 4</td>
+<td>"default"</td>
+<td>How combination loadings are computed ("sir" = code 4 is the regression default). Integral doubles are accepted. Unknown names/out-of-range codes warn and reset to <code>naive</code>; fractional and nonfinite codes are rejected.</td>
+</tr>
+<tr>
+<td><code>alpha</code></td>
+<td>float</td>
+<td>0</td>
+<td>Minimum child proportion used in split searches, clamped to <code>[0, 0.5]</code> at fit.</td>
+</tr>
+<tr>
+<td><code>reinforcement</code></td>
+<td>bool</td>
+<td>False</td>
+<td>Use embedded importance to choose axis-aligned split variables. See the interaction with <code>linear_comb</code> below.</td>
+</tr>
+<tr>
+<td><code>n_jobs</code></td>
+<td>int</td>
+<td>-1</td>
+<td>OpenMP threads (-1 or 0 = all cores).</td>
+</tr>
+<tr>
+<td><code>verbose</code></td>
+<td>int</td>
+<td>0</td>
+<td>Verbosity level.</td>
+</tr>
+<tr>
+<td><code>random_state</code></td>
+<td>int, Generator, RandomState, or None</td>
+<td>None</td>
+<td>Explicit native master seed; None draws from NumPy's global RNG. Supplied RNG objects advance. Repeat with the same data, effective parameters, and numerical environment.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="variance-settings">Variance settings<a class="headerlink" href="#variance-settings" title="Permanent link">&para;</a></h3>
+<p>For all three estimators, fitting with <code>var_mode</code> adjusts the sampling settings
+after parameter defaults are resolved:</p>
+<ul>
+<li><code>"matched"</code> uses paired half-samples without replacement, setting
+  <code>resample_prob=0.5</code> and <code>resample_replace=False</code>. An odd tree count is reduced
+  to the preceding even count; at least two trees are required.</li>
+<li><code>"ij"</code> and <code>"jack"</code> set <code>resample_replace=True</code> and keep the resolved
+  <code>resample_prob</code>. These modes estimate prediction variance, not variable
+  importance variance.</li>
+</ul>
+<p>All active variance modes retain sampling counts and change <code>importance="none"</code>
+to <code>"distribute"</code>. An explicitly selected <code>"permute"</code> or <code>"distribute"</code> method
+is retained. These modes supply their own sampling scheme and ignore a supplied
+<code>resample_preset</code>. Inspect <code>model.params_</code> after fitting for the effective
+settings.</p>
+<h3 id="embedded-model-controls">Embedded-model controls<a class="headerlink" href="#embedded-model-controls" title="Permanent link">&para;</a></h3>
+<p>Embedded forests rank predictors within the current node. With
+<code>linear_comb=1</code>, <code>reinforcement=True</code> selects this ranking for split-variable
+selection. With <code>linear_comb&gt;1</code>, regression and classification use embedded
+ranking in nodes with at least <code>3 * embed_nmin</code> observations, even when
+<code>reinforcement=False</code>; smaller nodes use direct screening. Survival
+combination splits screen <code>mtry</code> candidates without an embedded forest.
+Setting an <code>embed_*</code> parameter alone does not enable either splitting mode.</p>
+<p>The following controls are shared by the estimators. Here <code>n</code> is the total
+training sample size and <code>p</code> is the number of predictors. Proportions for
+embedded sampling and candidate selection refer to the current node and
+its available predictors.</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Type</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>embed_ntrees</code></td>
+<td>int</td>
+<td>50</td>
+<td>Number of trees in each embedded forest, with a minimum of 1.</td>
+</tr>
+<tr>
+<td><code>embed_mtry</code></td>
+<td>float</td>
+<td>0.5</td>
+<td>Candidates per embedded split: a proportion of available predictors below 1, or a count at least 1. The resulting count is truncated to an integer. Values are clamped to <code>[0, p]</code>.</td>
+</tr>
+<tr>
+<td><code>embed_nmin</code></td>
+<td>int</td>
+<td>5</td>
+<td>Embedded-tree node-size stopping threshold, with a minimum of 1. Nodes with at most this many observations stop; child nodes can be smaller. Also sets the <code>3 * embed_nmin</code> switch described above.</td>
+</tr>
+<tr>
+<td><code>embed_nsplit</code></td>
+<td>int</td>
+<td>3</td>
+<td>Random cut points per candidate in the embedded forest; 0 considers all cut points. Values are clamped to be nonnegative.</td>
+</tr>
+<tr>
+<td><code>embed_resample_replace</code></td>
+<td>bool</td>
+<td>True</td>
+<td>Whether each embedded tree samples with replacement.</td>
+</tr>
+<tr>
+<td><code>embed_resample_prob</code></td>
+<td>float</td>
+<td>0.9</td>
+<td>Fraction of the current node's observations sampled for each embedded tree, clamped to <code>[0, 0.99]</code>.</td>
+</tr>
+<tr>
+<td><code>embed_mute</code></td>
+<td>float</td>
+<td>0</td>
+<td>Requested removal of low-ranked predictors from descendant candidate sets: a proportion below 1, or a count at least 1. Zero disables muting; protected predictors are retained, so fewer may be removed. Values are clamped to <code>[0, p]</code>.</td>
+</tr>
+<tr>
+<td><code>embed_protect</code></td>
+<td>int or None</td>
+<td>None</td>
+<td>Maximum number of top-ranked predictors added to the protected set for axis-aligned reinforcement or regression combinations, subject to <code>embed_threshold</code>. None uses <code>ceil(log(n))</code>, with the natural logarithm. Explicit values are clamped to <code>[0, p]</code>; a positive value is required for reinforcement or combination splits. Classification combinations instead protect their threshold-qualified candidate pool.</td>
+</tr>
+<tr>
+<td><code>embed_threshold</code></td>
+<td>float</td>
+<td>0.25</td>
+<td>Importance cutoff relative to the best embedded importance, clamped to <code>[0, 1]</code>. It controls entry into the protected set and also screens classification combination candidates in large nodes. It does not filter regression combination candidates.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="methods">Methods<a class="headerlink" href="#methods" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fit(X, y, sample_weight=None, var_prob=None, *, resample_preset=None)</code></td>
+<td><code>self</code></td>
+<td>Grow the forest with observation weights, variable-sampling probabilities, or signed sampling counts.</td>
+</tr>
+<tr>
+<td><code>predict(X)</code></td>
+<td><code>(n,)</code> ndarray</td>
+<td>Regression predictions.</td>
+</tr>
+<tr>
+<td><code>predict_var(X, var_mode=None, ...)</code></td>
+<td><code>(pred, var)</code></td>
+<td>Predictions plus variance; requires <code>var_mode != "none"</code> at fit (or explicit compatible mode). Negative variance estimates are set to NaN.</td>
+</tr>
+<tr>
+<td><code>predict_all_trees(X)</code></td>
+<td><code>(n, trees)</code> ndarray</td>
+<td>Per-tree predictions; <code>trees = params_.ntrees</code>.</td>
+</tr>
+<tr>
+<td><code>predict_details(X, *, var_est=False, var_mode=None, keep_all=False)</code></td>
+<td>dict</td>
+<td>Complete predictions, optional variance and per-tree results, and effective uncertainty mode.</td>
+</tr>
+<tr>
+<td><code>oob_details()</code></td>
+<td>dict</td>
+<td>OOB predictions, counts, and availability mask.</td>
+</tr>
+<tr>
+<td><code>tree_summary(tree=0)</code> / <code>print_tree(tree=0)</code></td>
+<td>dict</td>
+<td>Readable node depths, named splits, weights, and terminal predictions.</td>
+</tr>
+<tr>
+<td><code>importance_table()</code></td>
+<td><code>ImportanceTable</code></td>
+<td>Variable-importance summary (Variable / VI, plus SD / Z / Sig when fitted with <code>importance != "none"</code> and <code>var_mode="matched"</code>); same as <code>rlt.importance(model)</code>.</td>
+</tr>
+<tr>
+<td><code>forest_kernel(X1, X2=None, vs_train=False, oob=False)</code></td>
+<td>integer ndarray, or dict with <code>oob=True</code></td>
+<td>Leaf-sharing counts; <code>vs_train=True</code> includes training in-bag multiplicities, while OOB mode returns pairwise normalized values and eligibility counts. Training modes require original training rows in their original order. See <a href="../../articles/feature-kernel/">Forest Kernel</a>.</td>
+</tr>
+<tr>
+<td><code>get_one_tree(tree_id)</code></td>
+<td>dict of ndarrays</td>
+<td>Raw arrays of tree <code>tree_id</code> (0-indexed).</td>
+</tr>
+<tr>
+<td><code>score(X, y)</code></td>
+<td>float</td>
+<td>Returns R² (sklearn convention).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="fitted-attributes">Fitted attributes<a class="headerlink" href="#fitted-attributes" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Shape</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>forest_</code></td>
+<td>dict</td>
+<td>The full fitted forest (split variables/values, loadings, node weights/averages), one array per tree.</td>
+</tr>
+<tr>
+<td><code>oob_prediction_</code></td>
+<td><code>(n,)</code></td>
+<td>Out-of-bag training predictions.</td>
+</tr>
+<tr>
+<td><code>oob_counts_</code></td>
+<td><code>(n,)</code></td>
+<td>Number of OOB predictions per row; use <code>oob_details()</code> to mask unavailable rows.</td>
+</tr>
+<tr>
+<td><code>oob_error_</code></td>
+<td>float</td>
+<td>Out-of-bag MSE.</td>
+</tr>
+<tr>
+<td><code>feature_importances_</code></td>
+<td><code>(p,)</code></td>
+<td>Variable importance (when <code>importance != "none"</code>).</td>
+</tr>
+<tr>
+<td><code>var_vi_</code></td>
+<td><code>(p,)</code></td>
+<td>Per-variable variance of the VI estimates (when <code>importance != "none"</code> and <code>var_mode="matched"</code>).</td>
+</tr>
+<tr>
+<td><code>obstrack_</code></td>
+<td><code>(n, trees)</code></td>
+<td>Signed sampling-count matrix, with <code>trees = params_.ntrees</code> (when tracked).</td>
+</tr>
+<tr>
+<td><code>ncat_</code></td>
+<td><code>(p,)</code></td>
+<td>Per-variable category count (1 = continuous).</td>
+</tr>
+<tr>
+<td><code>n_features_in_</code></td>
+<td>int</td>
+<td>Number of predictors.</td>
+</tr>
+</tbody>
+</table>
+<p>OOB attributes are absent when fitting disables OOB computation. Use
+<code>oob_details()</code> to mask rows without eligible trees before interpreting
+stored predictions or computing an error.</p>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">rlt</span><span class="w"> </span><span class="kn">import</span> <span class="n">RLT_reg</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">X</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="mi">100</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">y</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="n">X</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">rng</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="mi">100</span><span class="p">)</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="c1"># Plain forest</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">m</span> <span class="o">=</span> <span class="n">RLT_reg</span><span class="p">(</span><span class="n">n_estimators</span><span class="o">=</span><span class="mi">500</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">m</span><span class="o">.</span><span class="n">oob_error_</span>
+<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>
+<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="c1"># Reinforcement learning trees with combinations of up to 2 variables</span>
+<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="n">m2</span> <span class="o">=</span> <span class="n">RLT_reg</span><span class="p">(</span>
+<a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a>    <span class="n">n_estimators</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+<a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a>    <span class="n">linear_comb</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+<a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a>    <span class="n">linear_comb_method</span><span class="o">=</span><span class="s2">"sir"</span><span class="p">,</span>
+<a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a>    <span class="n">reinforcement</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a>    <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+<a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="p">)</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">y</span><span class="p">)</span>
+<a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="n">m2</span><span class="o">.</span><span class="n">oob_error_</span>
+</code></pre></div>
+<h2 id="see-also">See also<a class="headerlink" href="#see-also" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../../tutorials/regression-tutorial/">Regression tutorial</a></li>
+<li><a href="../../articles/linear-combinations/">Linear combinations</a></li>
+<li>Zhu, R., Zeng, D., &amp; Kosorok, M. R. (2015). Reinforcement Learning Trees. JASA.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.path", "content.code.copy", "content.tooltips", "search.highlight"], "search": "../../assets/javascripts/workers/search.a7633da7.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.c21346df.min.js"></script>
+      
+        <script src="../../javascripts/mathjax.js"></script>
+      
+        <script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-mml-chtml.js"></script>
+      
+    
+  </body>
+</html>
