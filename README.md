@@ -6,6 +6,9 @@ Fit random forests for continuous responses, class labels, and right-censored
 survival times with a scikit-learn-style interface. `rlt` brings the tree
 algorithms of the [RLT R package](https://github.com/teazrq/RLT) to Python.
 
+For installation, examples, and the R interface, see the
+[R version documentation](https://teazrq.github.io/RLT/).
+
 The default forest uses one variable at each split. Optional reinforcement uses
 embedded forests to guide variable selection. Linear-combination splits choose
 a direction formed from several predictors and do not require reinforcement.

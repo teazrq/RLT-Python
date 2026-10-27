@@ -11,6 +11,7 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   features:
+    - navigation.tabs
     - navigation.sections
     - navigation.top
     - navigation.path
@@ -82,3 +83,4 @@ nav:
       - get_surv_band: reference/get_surv_band.md
       - Comparing Python and R: reference/r-parity.md
       - Functionality and Tests: reference/alignment-coverage.md
+  - R version: https://teazrq.github.io/RLT/
